@@ -1,0 +1,719 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Продажи FunPay</title>
+<style>
+:root {
+  color-scheme: light;
+  --page: #f9f9f7; --surface: #fcfcfb; --surface-2: #f0efec;
+  --ink: #0b0b0b; --ink-2: #52514e; --muted: #898781;
+  --grid: #e1e0d9; --axis: #c3c2b7; --ring: rgba(11,11,11,0.10);
+  --s-closed: #2a78d6; --s-refunded: #eb6834; --s-paid: #1baf7a;
+  --up: #006300; --down: #d03b3b; --accent: #2a78d6;
+  --seq-0: #f0efec; --seq-1: #cde2fb; --seq-2: #9ec5f4; --seq-3: #6da7ec; --seq-4: #3987e5; --seq-5: #256abf; --seq-6: #104281;
+  --tip-bg: #0b0b0b; --tip-ink: #f0efec;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --page: #0d0d0d; --surface: #1a1a19; --surface-2: #262624;
+    --ink: #f0efec; --ink-2: #c3c2b7; --muted: #898781;
+    --grid: #2c2c2a; --axis: #383835; --ring: rgba(255,255,255,0.10);
+    --s-closed: #3987e5; --s-refunded: #d95926; --s-paid: #199e70;
+    --up: #0ca30c; --down: #e66767; --accent: #3987e5;
+    --seq-0: #262624; --seq-1: #104281; --seq-2: #184f95; --seq-3: #256abf; --seq-4: #3987e5; --seq-5: #6da7ec; --seq-6: #b7d3f6;
+    --tip-bg: #f0efec; --tip-ink: #0b0b0b;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --page: #0d0d0d; --surface: #1a1a19; --surface-2: #262624;
+  --ink: #f0efec; --ink-2: #c3c2b7; --muted: #898781;
+  --grid: #2c2c2a; --axis: #383835; --ring: rgba(255,255,255,0.10);
+  --s-closed: #3987e5; --s-refunded: #d95926; --s-paid: #199e70;
+  --up: #0ca30c; --down: #e66767; --accent: #3987e5;
+  --seq-0: #262624; --seq-1: #104281; --seq-2: #184f95; --seq-3: #256abf; --seq-4: #3987e5; --seq-5: #6da7ec; --seq-6: #b7d3f6;
+  --tip-bg: #f0efec; --tip-ink: #0b0b0b;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body { margin: 0; background: var(--page); color: var(--ink);
+  font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+.wrap { max-width: 1240px; margin: 0 auto; padding: 24px 16px 48px; }
+header { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px 24px; margin-bottom: 16px; }
+h1 { font-size: 24px; margin: 0; letter-spacing: -0.01em; }
+h2 { font-size: 16px; margin: 0; }
+.sub { color: var(--muted); font-size: 13px; }
+.filters { position: sticky; top: 0; z-index: 5; background: var(--page); padding: 10px 0; margin-bottom: 12px;
+  display: flex; flex-wrap: wrap; gap: 8px; align-items: center; border-bottom: 1px solid var(--grid); }
+.filters label { display: flex; flex-direction: column; gap: 2px; font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+select, input, button { font: inherit; color: var(--ink); background: var(--surface); border: 1px solid var(--ring);
+  border-radius: 8px; padding: 6px 10px; min-height: 34px; }
+input[type=search] { min-width: 180px; }
+button { cursor: pointer; }
+button:hover { background: var(--surface-2); }
+.seg { display: inline-flex; border: 1px solid var(--ring); border-radius: 8px; overflow: hidden; }
+.seg button { border: 0; border-radius: 0; min-height: 30px; padding: 4px 10px; background: var(--surface); color: var(--ink-2); }
+.seg button[aria-pressed=true] { background: var(--surface-2); color: var(--ink); font-weight: 600; }
+.kpis { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; margin-bottom: 16px; }
+.tile, .card { background: var(--surface); border: 1px solid var(--ring); border-radius: 12px; }
+.tile { padding: 14px 16px; }
+.tile .k { color: var(--ink-2); font-size: 13px; }
+.tile .v { font-size: 26px; font-weight: 650; margin-top: 2px; letter-spacing: -0.01em; }
+.tile .d { font-size: 12px; color: var(--muted); margin-top: 2px; }
+.up { color: var(--up); } .down { color: var(--down); }
+.grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 520px), 1fr)); gap: 16px; margin-bottom: 16px; }
+.card { padding: 16px; min-width: 0; margin-bottom: 16px; }
+.grid2 .card { margin-bottom: 0; }
+.card-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 12px; }
+.legend { display: flex; flex-wrap: wrap; gap: 12px; font-size: 12px; color: var(--ink-2); }
+.legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 6px; vertical-align: -1px; }
+.chart { width: 100%; }
+.chart svg { display: block; width: 100%; height: auto; overflow: visible; }
+.hbars { display: grid; gap: 6px; }
+.hbar { display: grid; grid-template-columns: minmax(90px, 38%) 1fr auto; gap: 10px; align-items: center; font-size: 13px; cursor: pointer; border-radius: 6px; padding: 2px 4px; }
+.hbar:hover { background: var(--surface-2); }
+.hbar .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink); }
+.hbar .track { height: 14px; display: flex; gap: 2px; }
+.hbar .track span { display: block; height: 100%; }
+.hbar .track span:last-child { border-radius: 0 4px 4px 0; }
+.hbar .val { font-variant-numeric: tabular-nums; color: var(--ink-2); white-space: nowrap; }
+.tbl-wrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th, td { text-align: left; padding: 7px 8px; border-bottom: 1px solid var(--grid); white-space: nowrap; }
+th { color: var(--muted); font-weight: 600; font-size: 12px; cursor: pointer; user-select: none; position: sticky; top: 0; background: var(--surface); }
+th[aria-sort=ascending]::after { content: " ▲"; } th[aria-sort=descending]::after { content: " ▼"; }
+td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+td.wrap { white-space: normal; min-width: 200px; }
+tr.clickable { cursor: pointer; } tr.clickable:hover td { background: var(--surface-2); }
+a { color: var(--accent); }
+.badge { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; }
+.badge i { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+.pager { display: flex; gap: 8px; align-items: center; justify-content: flex-end; margin-top: 10px; color: var(--muted); font-size: 12px; }
+.empty { color: var(--muted); padding: 24px 0; text-align: center; }
+.insights { margin: 0; padding-left: 18px; color: var(--ink-2); }
+.insights li { margin: 4px 0; }
+.insights b { color: var(--ink); }
+.reviews { display: grid; gap: 10px; max-height: 320px; overflow: auto; }
+.review { border-left: 3px solid var(--grid); padding: 2px 10px; }
+.review .meta { color: var(--muted); font-size: 12px; }
+#tip { position: fixed; pointer-events: none; z-index: 20; background: var(--tip-bg); color: var(--tip-ink); font-size: 12px;
+  padding: 8px 10px; border-radius: 8px; max-width: 280px; opacity: 0; transition: opacity .08s; }
+#tip b { font-weight: 650; }
+#tip .row { display: flex; justify-content: space-between; gap: 16px; }
+footer { color: var(--muted); font-size: 12px; margin-top: 24px; }
+@media (max-width: 560px) { .tile .v { font-size: 22px; } h1 { font-size: 20px; } .filters { position: static; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <h1>Продажи FunPay</h1>
+      <div class="sub" id="meta"></div>
+    </div>
+    <div class="seg" role="group" aria-label="Тема">
+      <button data-theme-btn="auto" aria-pressed="true">Авто</button>
+      <button data-theme-btn="light" aria-pressed="false">Светлая</button>
+      <button data-theme-btn="dark" aria-pressed="false">Тёмная</button>
+    </div>
+  </header>
+
+  <div class="filters" id="filters">
+    <label>Период
+      <select id="f-period">
+        <option value="all">Всё время</option>
+        <option value="30">Последние 30 дней</option>
+        <option value="90">Последние 90 дней</option>
+        <option value="365">Последние 365 дней</option>
+        <option value="ytd">С начала года</option>
+        <option value="lastyear">Прошлый год</option>
+        <option value="custom">Свой период…</option>
+      </select>
+    </label>
+    <label id="l-from" hidden>С <input type="date" id="f-from"></label>
+    <label id="l-to" hidden>По <input type="date" id="f-to"></label>
+    <label>Игра <select id="f-game"></select></label>
+    <label>Позиция <select id="f-pos"></select></label>
+    <label>Статус <select id="f-status"></select></label>
+    <label>Покупатель <input type="search" id="f-buyer" placeholder="ник…"></label>
+    <label>&nbsp;<button id="f-reset">Сбросить</button></label>
+  </div>
+
+  <section class="kpis" id="kpis"></section>
+
+  <div class="card">
+    <div class="card-head">
+      <h2 id="trend-title">Динамика</h2>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <div class="seg" id="trend-metric">
+          <button data-v="revenue" aria-pressed="true">Выручка</button>
+          <button data-v="orders" aria-pressed="false">Заказы</button>
+        </div>
+        <div class="seg" id="trend-gran">
+          <button data-v="month" aria-pressed="true">Месяц</button>
+          <button data-v="week" aria-pressed="false">Неделя</button>
+          <button data-v="day" aria-pressed="false">День</button>
+        </div>
+      </div>
+    </div>
+    <div class="legend" id="trend-legend"></div>
+    <div class="chart" id="trend"></div>
+  </div>
+
+  <div class="grid2">
+    <div class="card">
+      <div class="card-head"><h2>Что видно из данных</h2></div>
+      <ul class="insights" id="insights"></ul>
+    </div>
+    <div class="card">
+      <div class="card-head"><h2>Когда покупают</h2><span class="sub">заказы по дню недели и часу, МСК</span></div>
+      <div class="chart" id="heat"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-head">
+      <h2>Позиции</h2>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <div class="seg" id="pos-group">
+          <button data-v="cat" aria-pressed="true">Игра · категория</button>
+          <button data-v="price" aria-pressed="false">+ цена</button>
+        </div>
+        <div class="seg" id="pos-metric">
+          <button data-v="revenue" aria-pressed="true">Выручка</button>
+          <button data-v="orders" aria-pressed="false">Заказы</button>
+        </div>
+      </div>
+    </div>
+    <div class="legend" id="pos-legend"></div>
+    <div class="hbars" id="pos-bars" style="margin:10px 0 16px"></div>
+    <div class="tbl-wrap" id="pos-table"></div>
+  </div>
+
+  <div class="grid2">
+    <div class="card">
+      <div class="card-head"><h2>Сколько раз покупают</h2><span class="sub">покупателей по числу заказов</span></div>
+      <div class="chart" id="repeat"></div>
+    </div>
+    <div class="card">
+      <div class="card-head"><h2>Отзывы</h2><span class="sub" id="rev-sub"></span></div>
+      <div class="hbars" id="rating-bars" style="margin-bottom:14px"></div>
+      <div class="reviews" id="reviews"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><h2>Покупатели</h2><span class="sub">клик по строке — показать только этого покупателя</span></div>
+    <div class="tbl-wrap" id="buyers"></div>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><h2>Заказы</h2><span class="sub" id="orders-sub"></span></div>
+    <div class="tbl-wrap" id="orders"></div>
+  </div>
+
+  <footer>
+    Суммы — цена заказа для покупателя, без учёта комиссии FunPay. Выручка — закрытые заказы (возвраты не входят).
+    Время московское. Файл содержит ники покупателей — не публикуйте его.
+  </footer>
+</div>
+<div id="tip" role="tooltip"></div>
+
+<script>
+const DATA = /*__DATA__*/null;
+</script>
+<script>
+(() => {
+"use strict";
+const ORDERS = DATA.orders;
+const STATUS = {
+  closed:   { label: "Закрыт",  color: "var(--s-closed)" },
+  paid:     { label: "Оплачен", color: "var(--s-paid)" },
+  refunded: { label: "Возврат", color: "var(--s-refunded)" },
+};
+const STATUS_ORDER = ["closed", "paid", "refunded"];
+const statusInfo = s => STATUS[s] || { label: s, color: "var(--muted)" };
+
+// ---------- helpers ----------
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const nf0 = new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 0 });
+const nf2 = new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 2 });
+const rub = v => nf0.format(Math.round(v)) + " ₽";
+const rubShort = v => Math.abs(v) >= 1e6 ? nf2.format(v / 1e6) + " млн ₽" : Math.abs(v) >= 1e4 ? nf0.format(v / 1e3) + " тыс ₽" : rub(v);
+const pct = v => isFinite(v) ? nf0.format(v * 100) + "%" : "—";
+const MONTHS = ["янв", "фев", "мар", "апр", "май", "июн", "июл", "авг", "сен", "окт", "ноя", "дек"];
+const WD = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"];
+// Даты уже в МСК (+03:00): берём части строки, не завися от пояса браузера.
+const day = iso => iso ? iso.slice(0, 10) : "";
+const hour = iso => +iso.slice(11, 13);
+const utcDay = d => new Date(d + "T00:00:00Z");
+const weekday = d => (utcDay(d).getUTCDay() + 6) % 7;
+const addDays = (d, n) => { const x = utcDay(d); x.setUTCDate(x.getUTCDate() + n); return x.toISOString().slice(0, 10); };
+const daysBetween = (a, b) => Math.round((utcDay(b) - utcDay(a)) / 864e5);
+const fmtDay = d => { const [y, m, dd] = d.split("-"); return `${+dd} ${MONTHS[+m - 1]} ${y}`; };
+const fmtDT = iso => iso ? `${fmtDay(day(iso))}, ${iso.slice(11, 16)}` : "—";
+const hours = (a, b) => (new Date(b) - new Date(a)) / 36e5;
+const median = arr => { if (!arr.length) return NaN; const s = [...arr].sort((a, b) => a - b), m = s.length >> 1; return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; };
+const fmtDur = h => !isFinite(h) ? "—" : h < 1 ? nf0.format(h * 60) + " мин" : h < 48 ? nf2.format(h) + " ч" : nf2.format(h / 24) + " дн";
+const posKey = (o, mode) => mode === "price" ? `${o.game} · ${o.cat} · ${rub(o.price)}` : `${o.game} · ${o.cat}`;
+const isRevenue = o => o.status === "closed";
+const sum = (arr, f) => arr.reduce((a, o) => a + f(o), 0);
+const orderUrl = id => "https://funpay.com/orders/" + encodeURIComponent(id) + "/";
+const userUrl = id => "https://funpay.com/users/" + encodeURIComponent(id) + "/";
+const TODAY = DATA.generated.slice(0, 10);
+
+// ---------- tooltip ----------
+const tip = $("tip");
+document.addEventListener("mousemove", e => {
+  const t = e.target.closest("[data-tip]");
+  if (!t) { tip.style.opacity = 0; return; }
+  tip.innerHTML = t.getAttribute("data-tip");
+  const w = tip.offsetWidth, h = tip.offsetHeight;
+  let x = e.clientX + 14, y = e.clientY + 14;
+  if (x + w > innerWidth - 8) x = e.clientX - w - 14;
+  if (y + h > innerHeight - 8) y = e.clientY - h - 14;
+  tip.style.left = Math.max(8, x) + "px"; tip.style.top = Math.max(8, y) + "px"; tip.style.opacity = 1;
+});
+const tipRows = (title, rows) => `<b>${esc(title)}</b>` + rows.map(([k, v, c]) =>
+  `<div class="row"><span>${c ? `<i style="display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:6px;background:${c}"></i>` : ""}${esc(k)}</span><span>${esc(v)}</span></div>`).join("");
+
+// ---------- state & filters ----------
+const state = { period: "all", from: "", to: "", game: "", pos: "", status: "", buyer: "",
+  trendMetric: "revenue", trendGran: "month", posGroup: "cat", posMetric: "revenue",
+  buyerSort: { key: "revenue", dir: -1 }, orderSort: { key: "paid", dir: -1 }, posSort: { key: "revenue", dir: -1 }, page: 0 };
+
+function fillSelect(el, values, allLabel, labelFn = v => v) {
+  const cur = el.value;
+  el.innerHTML = `<option value="">${allLabel}</option>` + values.map(v => `<option value="${esc(v)}">${esc(labelFn(v))}</option>`).join("");
+  if (values.includes(cur)) el.value = cur;
+}
+const uniq = arr => [...new Set(arr)].sort((a, b) => String(a).localeCompare(String(b), "ru"));
+
+function periodRange() {
+  const p = state.period;
+  if (p === "all") return [null, null];
+  if (p === "custom") return [state.from || null, state.to || null];
+  if (p === "ytd") return [TODAY.slice(0, 4) + "-01-01", TODAY];
+  if (p === "lastyear") { const y = +TODAY.slice(0, 4) - 1; return [`${y}-01-01`, `${y}-12-31`]; }
+  return [addDays(TODAY, -(+p) + 1), TODAY];
+}
+
+function matchesDims(o) {
+  if (state.game && o.game !== state.game) return false;
+  if (state.pos && posKey(o, "cat") !== state.pos) return false;
+  if (state.status && o.status !== state.status) return false;
+  if (state.buyer) {
+    const q = state.buyer.toLowerCase();
+    if (!String(o.buyer).toLowerCase().includes(q) && String(o.buyer_id) !== q) return false;
+  }
+  return true;
+}
+function inRange(o, from, to) { const d = day(o.paid); return (!from || d >= from) && (!to || d <= to); }
+
+function filtered() {
+  const [from, to] = periodRange();
+  const cur = ORDERS.filter(o => matchesDims(o) && inRange(o, from, to));
+  let prev = null;
+  if (from && to) {
+    const len = daysBetween(from, to) + 1;
+    const pTo = addDays(from, -1), pFrom = addDays(from, -len);
+    prev = ORDERS.filter(o => matchesDims(o) && inRange(o, pFrom, pTo));
+  }
+  return { cur, prev, from, to };
+}
+
+// ---------- metrics ----------
+function metrics(list) {
+  const closed = list.filter(isRevenue), refunded = list.filter(o => o.status === "refunded");
+  const buyers = new Map();
+  for (const o of list) buyers.set(o.buyer_id, (buyers.get(o.buyer_id) || 0) + 1);
+  const repeatIds = new Set([...buyers].filter(([, n]) => n > 1).map(([id]) => id));
+  const revenue = sum(closed, o => o.price);
+  const rated = list.filter(o => o.rating != null);
+  return {
+    orders: list.length, revenue, closed: closed.length,
+    avg: closed.length ? revenue / closed.length : NaN,
+    refunds: refunded.length, refundSum: sum(refunded, o => o.price), refundRate: list.length ? refunded.length / list.length : NaN,
+    buyers: buyers.size, repeat: repeatIds.size, repeatShare: buyers.size ? repeatIds.size / buyers.size : NaN,
+    repeatRevenueShare: revenue ? sum(closed.filter(o => repeatIds.has(o.buyer_id)), o => o.price) / revenue : NaN,
+    rating: rated.length ? sum(rated, o => o.rating) / rated.length : NaN, rated: rated.length,
+    reviewRate: closed.length ? rated.length / closed.length : NaN,
+    closeMedian: median(closed.filter(o => o.paid && o.closed).map(o => hours(o.paid, o.closed))),
+  };
+}
+
+function delta(cur, prev, betterUp = true) {
+  if (prev == null || !isFinite(prev) || !isFinite(cur) || prev === 0) return "";
+  const d = (cur - prev) / Math.abs(prev);
+  if (Math.abs(d) < 0.005) return `<span class="d">≈ как в прошлом периоде</span>`;
+  const good = (d > 0) === betterUp;
+  return `<span class="${good ? "up" : "down"}">${d > 0 ? "▲" : "▼"} ${pct(Math.abs(d))}</span> к прошлому периоду`;
+}
+
+function renderKpis(m, p) {
+  const tiles = [
+    ["Выручка", rub(m.revenue), delta(m.revenue, p?.revenue) || `${nf0.format(m.closed)} закрытых заказов`],
+    ["Заказов", nf0.format(m.orders), delta(m.orders, p?.orders) || "все статусы"],
+    ["Средний чек", isFinite(m.avg) ? rub(m.avg) : "—", delta(m.avg, p?.avg) || "по закрытым"],
+    ["Возвраты", `${nf0.format(m.refunds)} · ${pct(m.refundRate)}`, `${rub(m.refundSum)} вернули` + (p ? " · " + delta(m.refundRate, p.refundRate, false) : "")],
+    ["Покупателей", nf0.format(m.buyers), delta(m.buyers, p?.buyers) || "уникальных"],
+    ["Вернулись снова", pct(m.repeatShare), `${nf0.format(m.repeat)} чел. · ${pct(m.repeatRevenueShare)} выручки`],
+    ["Рейтинг", isFinite(m.rating) ? nf2.format(m.rating) + " ★" : "—", `${nf0.format(m.rated)} оценок · отзыв в ${pct(m.reviewRate)} заказов`],
+    ["До закрытия", fmtDur(m.closeMedian), "медиана от оплаты до подтверждения"],
+  ];
+  $("kpis").innerHTML = tiles.map(([k, v, d]) => `<div class="tile"><div class="k">${k}</div><div class="v">${v}</div><div class="d">${d}</div></div>`).join("");
+}
+
+// ---------- SVG bar chart (stacked, one axis) ----------
+function niceMax(v) {
+  if (v <= 0) return 1;
+  const p = Math.pow(10, Math.floor(Math.log10(v))), n = v / p;
+  return (n <= 1 ? 1 : n <= 2 ? 2 : n <= 2.5 ? 2.5 : n <= 5 ? 5 : 10) * p;
+}
+function topRounded(x, y, w, h, r) {
+  r = Math.min(r, h, w / 2);
+  return `M${x},${y + h}V${y + r}Q${x},${y} ${x + r},${y}H${x + w - r}Q${x + w},${y} ${x + w},${y + r}V${y + h}Z`;
+}
+function barChart(el, buckets, series, fmtAxis, fmtVal, height = 260) {
+  const W = Math.max(280, el.clientWidth), H = height, L = 64, R = 8, T = 10, B = 26;
+  const iw = W - L - R, ih = H - T - B;
+  if (!buckets.length) { el.innerHTML = `<div class="empty">Нет заказов под выбранные фильтры</div>`; return; }
+  const totals = buckets.map(b => series.reduce((a, s) => a + (b.v[s.key] || 0), 0));
+  let max = niceMax(Math.max(...totals));
+  if (totals.every(Number.isInteger) && max < 4) max = 4; // штуки: целые деления оси
+  const y = v => T + ih - (v / max) * ih;
+  const step = iw / buckets.length, bw = Math.max(2, Math.min(48, step * 0.72));
+  let g = "";
+  for (let i = 0; i <= 4; i++) {
+    const v = max * i / 4, yy = y(v);
+    g += `<line x1="${L}" x2="${W - R}" y1="${yy}" y2="${yy}" stroke="${i ? "var(--grid)" : "var(--axis)"}" stroke-width="1"/>`;
+    g += `<text x="${L - 8}" y="${yy + 4}" text-anchor="end" font-size="11" fill="var(--muted)">${esc(fmtAxis(v))}</text>`;
+  }
+  const every = Math.ceil(buckets.length / Math.max(1, Math.floor(iw / 64)));
+  buckets.forEach((b, i) => {
+    const x = L + step * i + (step - bw) / 2;
+    let acc = 0;
+    const segs = series.filter(s => b.v[s.key] > 0);
+    segs.forEach((s, j) => {
+      const v = b.v[s.key], y0 = y(acc), y1 = y(acc + v);
+      const top = j === segs.length - 1, gap = j > 0 ? 2 : 0;
+      const h = Math.max(0, y0 - y1 - gap);
+      g += top ? `<path d="${topRounded(x, y1, bw, h, 4)}" fill="${s.color}"/>` : `<rect x="${x}" y="${y1}" width="${bw}" height="${h}" fill="${s.color}"/>`;
+      acc += v;
+    });
+    if (i % every === 0) g += `<text x="${L + step * i + step / 2}" y="${H - 8}" text-anchor="middle" font-size="11" fill="var(--muted)">${esc(b.short)}</text>`;
+    const rows = series.filter(s => b.v[s.key]).map(s => [s.label, fmtVal(b.v[s.key]), s.color]);
+    if (series.length > 1) rows.push(["Всего", fmtVal(totals[i])]);
+    g += `<rect x="${L + step * i}" y="${T}" width="${step}" height="${ih}" fill="transparent" data-tip="${esc(tipRows(b.label, rows.length ? rows : [["—", fmtVal(0)]]))}"/>`;
+  });
+  el.innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(el.dataset.label || "")}">${g}</svg>`;
+}
+
+function legend(el, series) {
+  el.innerHTML = series.length > 1 ? series.map(s => `<span><i style="background:${s.color}"></i>${esc(s.label)}</span>`).join("") : "";
+}
+
+// ---------- trend ----------
+function bucketKey(d, gran) {
+  if (gran === "day") return d;
+  if (gran === "month") return d.slice(0, 7);
+  return addDays(d, -weekday(d)); // понедельник недели
+}
+function nextBucket(k, gran) {
+  if (gran === "day") return addDays(k, 1);
+  if (gran === "week") return addDays(k, 7);
+  let [y, m] = k.split("-").map(Number); m++; if (m > 12) { m = 1; y++; }
+  return `${y}-${String(m).padStart(2, "0")}`;
+}
+function bucketLabel(k, gran) {
+  if (gran === "month") { const [y, m] = k.split("-"); return { label: `${MONTHS[+m - 1]} ${y}`, short: `${MONTHS[+m - 1]} ${y.slice(2)}` }; }
+  if (gran === "week") return { label: `неделя с ${fmtDay(k)}`, short: fmtDay(k).slice(0, -5) };
+  return { label: fmtDay(k), short: fmtDay(k).slice(0, -5) };
+}
+function renderTrend(list, from, to) {
+  const gran = state.trendGran, metric = state.trendMetric;
+  const days = list.map(o => day(o.paid)).filter(Boolean).sort();
+  const start = from || days[0], end = to || days[days.length - 1];
+  const buckets = [];
+  if (start && end) {
+    const map = new Map();
+    for (let k = bucketKey(start, gran), last = bucketKey(end, gran), n = 0; k <= last && n < 2000; k = nextBucket(k, gran), n++)
+      map.set(k, { key: k, ...bucketLabel(k, gran), v: {} });
+    for (const o of list) {
+      const b = map.get(bucketKey(day(o.paid), gran)); if (!b) continue;
+      if (metric === "revenue") { if (isRevenue(o)) b.v.closed = (b.v.closed || 0) + o.price; }
+      else b.v[o.status] = (b.v[o.status] || 0) + 1;
+    }
+    buckets.push(...map.values());
+  }
+  const present = new Set(list.map(o => o.status));
+  const series = metric === "revenue"
+    ? [{ key: "closed", label: "Выручка", color: STATUS.closed.color }]
+    : [...STATUS_ORDER.filter(s => present.has(s)), ...[...present].filter(s => !STATUS[s])].map(s => ({ key: s, label: statusInfo(s).label, color: statusInfo(s).color }));
+  $("trend-title").textContent = metric === "revenue" ? "Выручка по периодам" : "Заказы по периодам";
+  legend($("trend-legend"), series);
+  $("trend").dataset.label = $("trend-title").textContent;
+  barChart($("trend"), buckets, series, metric === "revenue" ? rubShort : v => nf0.format(v), metric === "revenue" ? rub : v => nf0.format(v) + " шт");
+}
+
+// ---------- heatmap ----------
+function renderHeat(list) {
+  const el = $("heat"), cells = Array.from({ length: 7 }, () => Array(24).fill(0));
+  for (const o of list) if (o.paid) cells[weekday(day(o.paid))][hour(o.paid)]++;
+  const max = Math.max(1, ...cells.flat());
+  const W = Math.max(300, el.clientWidth), L = 28, T = 4, B = 20, cw = (W - L) / 24, ch = Math.min(26, Math.max(16, cw));
+  const H = T + ch * 7 + B;
+  let g = "";
+  cells.forEach((row, r) => {
+    g += `<text x="${L - 6}" y="${T + r * ch + ch / 2 + 4}" text-anchor="end" font-size="11" fill="var(--muted)">${WD[r]}</text>`;
+    row.forEach((v, c) => {
+      const lvl = v ? Math.min(6, 1 + Math.floor((v / max) * 5.999)) : 0;
+      g += `<rect x="${L + c * cw + 1}" y="${T + r * ch + 1}" width="${cw - 2}" height="${ch - 2}" rx="3" fill="var(--seq-${lvl})" data-tip="${esc(tipRows(`${WD[r]}, ${String(c).padStart(2, "0")}:00–${String(c).padStart(2, "0")}:59`, [["Заказов", nf0.format(v)]]))}"/>`;
+    });
+  });
+  for (let c = 0; c < 24; c += 3) g += `<text x="${L + c * cw + cw / 2}" y="${H - 5}" text-anchor="middle" font-size="11" fill="var(--muted)">${c}</text>`;
+  el.innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Заказы по дню недели и часу">${g}</svg>`;
+  return cells;
+}
+
+// ---------- horizontal bars ----------
+function hbars(el, items, maxItems, onClick) {
+  if (!items.length) { el.innerHTML = `<div class="empty">Нет данных</div>`; return; }
+  const shown = items.slice(0, maxItems);
+  const max = Math.max(...shown.map(i => i.parts.reduce((a, p) => a + p.v, 0)), 1);
+  el.innerHTML = shown.map((it, idx) => `<div class="hbar" data-idx="${idx}" data-tip="${esc(it.tip)}">
+      <span class="name" title="${esc(it.name)}">${esc(it.name)}</span>
+      <span class="track">${it.parts.filter(p => p.v > 0).map(p => `<span style="width:${(p.v / max) * 100}%;background:${p.color}"></span>`).join("")}</span>
+      <span class="val">${esc(it.valText)}</span></div>`).join("") +
+    (items.length > maxItems ? `<div class="sub">…и ещё ${items.length - maxItems}</div>` : "");
+  if (onClick) el.querySelectorAll(".hbar").forEach(n => n.onclick = () => onClick(shown[+n.dataset.idx]));
+}
+
+// ---------- tables ----------
+function table(el, cols, rows, sortState, onSort, rowAttrs) {
+  const { key, dir } = sortState;
+  const col = cols.find(c => c.key === key) || cols[0];
+  const sorted = [...rows].sort((a, b) => {
+    const va = col.sort ? col.sort(a) : a[col.key], vb = col.sort ? col.sort(b) : b[col.key];
+    return (va > vb ? 1 : va < vb ? -1 : 0) * dir;
+  });
+  el.innerHTML = `<table><thead><tr>${cols.map(c => `<th class="${c.num ? "num" : ""}" data-key="${c.key}" aria-sort="${c.key === key ? (dir > 0 ? "ascending" : "descending") : "none"}">${c.label}</th>`).join("")}</tr></thead>
+    <tbody>${sorted.map(r => `<tr ${rowAttrs ? rowAttrs(r) : ""}>${cols.map(c => `<td class="${c.num ? "num" : ""} ${c.wrap ? "wrap" : ""}">${c.html ? c.html(r) : esc(c.fmt ? c.fmt(r[c.key], r) : r[c.key])}</td>`).join("")}</tr>`).join("")}</tbody></table>`;
+  el.querySelectorAll("th").forEach(th => th.onclick = () => {
+    const k = th.dataset.key; onSort(k === key ? { key, dir: -dir } : { key: k, dir: -1 });
+  });
+  return sorted;
+}
+
+// ---------- positions ----------
+function positionStats(list, mode) {
+  const map = new Map();
+  for (const o of list) {
+    const k = posKey(o, mode);
+    const s = map.get(k) || map.set(k, { name: k, filterKey: posKey(o, "cat"), orders: 0, closed: 0, refunds: 0, paid: 0, revenue: 0, refundSum: 0, buyers: new Set(), last: "" }).get(k);
+    s.orders++; s.buyers.add(o.buyer_id);
+    if (o.status === "closed") { s.closed++; s.revenue += o.price; }
+    else if (o.status === "refunded") { s.refunds++; s.refundSum += o.price; }
+    else s.paid++;
+    if (o.paid > s.last) s.last = o.paid;
+  }
+  return [...map.values()].map(s => ({ ...s, buyerCount: s.buyers.size, refundRate: s.refunds / s.orders, avg: s.closed ? s.revenue / s.closed : 0 }));
+}
+function renderPositions(list) {
+  const stats = positionStats(list, state.posGroup), metric = state.posMetric;
+  const total = sum(stats, s => s.revenue) || 1;
+  const items = stats.sort((a, b) => metric === "revenue" ? b.revenue - a.revenue : b.orders - a.orders).map(s => ({
+    ...s,
+    parts: metric === "revenue" ? [{ v: s.revenue, color: STATUS.closed.color }]
+      : [{ v: s.closed, color: STATUS.closed.color }, { v: s.paid, color: STATUS.paid.color }, { v: s.refunds, color: STATUS.refunded.color }],
+    valText: metric === "revenue" ? `${rub(s.revenue)} · ${pct(s.revenue / total)}` : `${nf0.format(s.orders)} шт`,
+    tip: tipRows(s.name, [["Выручка", rub(s.revenue)], ["Закрыто", nf0.format(s.closed), STATUS.closed.color], ["В работе", nf0.format(s.paid), STATUS.paid.color], ["Возвраты", `${nf0.format(s.refunds)} (${pct(s.refundRate)})`, STATUS.refunded.color], ["Покупателей", nf0.format(s.buyerCount)]]),
+  }));
+  legend($("pos-legend"), metric === "orders" ? STATUS_ORDER.map(k => ({ label: STATUS[k].label, color: STATUS[k].color })) : []);
+  hbars($("pos-bars"), items, 15, it => { $("f-pos").value = it.filterKey; state.pos = it.filterKey; update(); });
+  table($("pos-table"), [
+    { key: "name", label: "Позиция" },
+    { key: "orders", label: "Заказов", num: true, fmt: v => nf0.format(v) },
+    { key: "revenue", label: "Выручка", num: true, fmt: rub },
+    { key: "share", label: "Доля", num: true, sort: r => r.revenue, html: r => pct(r.revenue / total) },
+    { key: "avg", label: "Ср. чек", num: true, fmt: v => v ? rub(v) : "—" },
+    { key: "refunds", label: "Возвратов", num: true, fmt: (v, r) => `${nf0.format(v)} · ${pct(r.refundRate)}` },
+    { key: "buyerCount", label: "Покупателей", num: true, fmt: v => nf0.format(v) },
+    { key: "last", label: "Последняя продажа", fmt: fmtDT },
+  ], stats, state.posSort, s => { state.posSort = s; renderPositions(list); });
+  return stats;
+}
+
+// ---------- buyers ----------
+function buyerStats(list) {
+  const map = new Map();
+  for (const o of list) {
+    const s = map.get(o.buyer_id) || map.set(o.buyer_id, { id: o.buyer_id, name: o.buyer, orders: 0, revenue: 0, refunds: 0, first: o.paid, last: o.paid, ratings: [], pos: new Map() }).get(o.buyer_id);
+    s.orders++; s.name = o.buyer;
+    if (isRevenue(o)) s.revenue += o.price;
+    if (o.status === "refunded") s.refunds++;
+    if (o.paid < s.first) s.first = o.paid;
+    if (o.paid > s.last) s.last = o.paid;
+    if (o.rating != null) s.ratings.push(o.rating);
+    const pk = posKey(o, "cat"); s.pos.set(pk, (s.pos.get(pk) || 0) + 1);
+  }
+  return [...map.values()].map(s => ({ ...s,
+    avgRating: s.ratings.length ? sum(s.ratings, x => x) / s.ratings.length : null,
+    sinceLast: s.last ? daysBetween(day(s.last), TODAY) : null,
+    topPos: [...s.pos].sort((a, b) => b[1] - a[1])[0]?.[0] || "—" }));
+}
+function renderBuyers(list) {
+  const stats = buyerStats(list);
+  table($("buyers"), [
+    { key: "name", label: "Покупатель", html: r => `<a href="${userUrl(r.id)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">${esc(r.name)}</a>` },
+    { key: "orders", label: "Заказов", num: true, fmt: v => nf0.format(v) },
+    { key: "revenue", label: "Выручка", num: true, fmt: rub },
+    { key: "refunds", label: "Возвратов", num: true, fmt: v => v ? nf0.format(v) : "—" },
+    { key: "avgRating", label: "Оценка", num: true, sort: r => r.avgRating ?? -1, fmt: v => v == null ? "—" : nf2.format(v) + " ★" },
+    { key: "topPos", label: "Чаще берёт" },
+    { key: "first", label: "Первая покупка", fmt: fmtDT },
+    { key: "last", label: "Последняя", fmt: fmtDT },
+    { key: "sinceLast", label: "Дней назад", num: true, fmt: v => v == null ? "—" : nf0.format(v) },
+  ], stats, state.buyerSort, s => { state.buyerSort = s; renderBuyers(list); }, r => `class="clickable" data-buyer="${esc(r.id)}"`);
+  $("buyers").querySelectorAll("tr[data-buyer]").forEach(tr => tr.onclick = () => {
+    $("f-buyer").value = tr.dataset.buyer; state.buyer = tr.dataset.buyer; update();
+  });
+  // Распределение по числу заказов
+  const bins = ["1", "2", "3", "4", "5–9", "10+"], counts = Object.fromEntries(bins.map(b => [b, 0]));
+  for (const s of stats) counts[s.orders >= 10 ? "10+" : s.orders >= 5 ? "5–9" : String(s.orders)]++;
+  $("repeat").dataset.label = "Покупатели по числу заказов";
+  barChart($("repeat"), bins.map(b => ({ label: `Заказов у покупателя: ${b}`, short: b, v: { n: counts[b] } })),
+    [{ key: "n", label: "Покупателей", color: "var(--s-closed)" }], v => nf0.format(v), v => nf0.format(v) + " чел.", 220);
+  return stats;
+}
+
+// ---------- reviews ----------
+function renderReviews(list) {
+  const closed = list.filter(isRevenue);
+  const counts = [5, 4, 3, 2, 1].map(r => ({ r, n: list.filter(o => o.rating === r).length }));
+  const none = closed.filter(o => o.rating == null).length;
+  const items = [...counts.map(c => ({ name: "★".repeat(c.r), n: c.n })), { name: "без оценки", n: none }]
+    .map(c => ({ name: c.name, parts: [{ v: c.n, color: "var(--s-closed)" }], valText: nf0.format(c.n), tip: tipRows(c.name, [["Заказов", nf0.format(c.n)]]) }));
+  hbars($("rating-bars"), items, 10);
+  const withText = list.filter(o => o.review).sort((a, b) => (b.paid > a.paid ? 1 : -1));
+  $("rev-sub").textContent = `${withText.length} с текстом`;
+  $("reviews").innerHTML = withText.length ? withText.slice(0, 50).map(o => `<div class="review">
+      <div>${o.rating ? "★".repeat(o.rating) + " " : ""}${esc(o.review)}</div>
+      <div class="meta">${esc(o.buyer)} · ${esc(posKey(o, "cat"))} · ${fmtDT(o.paid)}${o.reply ? " · есть ответ" : ""}</div></div>`).join("")
+    : `<div class="empty">Отзывов с текстом нет</div>`;
+}
+
+// ---------- orders ----------
+const PAGE = 50;
+function renderOrders(list) {
+  const pages = Math.max(1, Math.ceil(list.length / PAGE));
+  state.page = Math.min(state.page, pages - 1);
+  const cols = [
+    { key: "id", label: "Заказ", html: r => `<a href="${orderUrl(r.id)}" target="_blank" rel="noopener">#${esc(r.id)}</a>` },
+    { key: "paid", label: "Оплачен", fmt: fmtDT },
+    { key: "pos", label: "Позиция", sort: r => posKey(r, "cat"), html: r => esc(posKey(r, "cat")) },
+    { key: "buyer", label: "Покупатель" },
+    { key: "status", label: "Статус", html: r => `<span class="badge"><i style="background:${statusInfo(r.status).color}"></i>${esc(statusInfo(r.status).label)}</span>` },
+    { key: "price", label: "Сумма", num: true, fmt: rub },
+    { key: "dur", label: "До закрытия", num: true, sort: r => r.closed && r.paid ? hours(r.paid, r.closed) : -1, html: r => r.closed && r.paid ? fmtDur(hours(r.paid, r.closed)) : "—" },
+    { key: "rating", label: "Оценка", num: true, sort: r => r.rating ?? -1, html: r => r.rating ? r.rating + " ★" : "—" },
+  ];
+  const { key, dir } = state.orderSort, col = cols.find(c => c.key === key) || cols[1];
+  const sorted = [...list].sort((a, b) => { const va = col.sort ? col.sort(a) : a[col.key], vb = col.sort ? col.sort(b) : b[col.key]; return (va > vb ? 1 : va < vb ? -1 : 0) * dir; });
+  const page = sorted.slice(state.page * PAGE, state.page * PAGE + PAGE);
+  table($("orders"), cols, page, { key, dir: 0 }, s => { state.orderSort = s.key === key ? { key, dir: -dir } : s; renderOrders(list); });
+  // table() пересортирует страницу с dir 0 — сохраняем порядок, но показываем стрелку:
+  $("orders").querySelectorAll("th").forEach(th => th.setAttribute("aria-sort", th.dataset.key === key ? (dir > 0 ? "ascending" : "descending") : "none"));
+  $("orders-sub").textContent = `${nf0.format(list.length)} шт · сумма ${rub(sum(list, o => o.price))}`;
+  if (pages > 1) {
+    $("orders").insertAdjacentHTML("beforeend", `<div class="pager"><button id="pg-prev" ${state.page ? "" : "disabled"}>←</button>стр. ${state.page + 1} из ${pages}<button id="pg-next" ${state.page < pages - 1 ? "" : "disabled"}>→</button></div>`);
+    $("pg-prev").onclick = () => { state.page--; renderOrders(list); };
+    $("pg-next").onclick = () => { state.page++; renderOrders(list); };
+  }
+}
+
+// ---------- insights ----------
+function renderInsights(list, m, positions, buyers, cells) {
+  const out = [];
+  if (!list.length) { $("insights").innerHTML = `<li>Нет заказов под выбранные фильтры.</li>`; return; }
+  const byRev = [...positions].sort((a, b) => b.revenue - a.revenue);
+  if (byRev[0]?.revenue) out.push(`Главная позиция — <b>${esc(byRev[0].name)}</b>: ${pct(byRev[0].revenue / (m.revenue || 1))} выручки.`);
+  const risky = positions.filter(p => p.refunds >= 2 && p.refundRate >= 0.1).sort((a, b) => b.refunds - a.refunds)[0];
+  if (risky) out.push(`Чаще всего возвращают <b>${esc(risky.name)}</b>: ${pct(risky.refundRate)} заказов (${nf0.format(risky.refunds)} из ${nf0.format(risky.orders)}) — стоит проверить описание лота.`);
+  if (m.buyers) out.push(`<b>${pct(m.repeatShare)}</b> покупателей вернулись ещё раз и принесли <b>${pct(m.repeatRevenueShare)}</b> выручки.`);
+  const top = [...buyers].sort((a, b) => b.revenue - a.revenue)[0];
+  if (top?.revenue) out.push(`Самый ценный покупатель — <b>${esc(top.name)}</b>: ${nf0.format(top.orders)} заказ(ов) на ${rub(top.revenue)}.`);
+  const wdTot = cells.map(r => r.reduce((a, b) => a + b, 0)), hTot = Array.from({ length: 24 }, (_, h) => cells.reduce((a, r) => a + r[h], 0));
+  const bestWd = wdTot.indexOf(Math.max(...wdTot)), bestH = hTot.indexOf(Math.max(...hTot));
+  out.push(`Чаще всего покупают в <b>${WD[bestWd].toLowerCase()}</b> и около <b>${bestH}:00</b> МСК — удобное время поднимать лоты.`);
+  const months = new Map();
+  for (const o of list.filter(isRevenue)) { const k = day(o.paid).slice(0, 7); months.set(k, (months.get(k) || 0) + o.price); }
+  const bestM = [...months].sort((a, b) => b[1] - a[1])[0];
+  if (bestM) { const [y, mm] = bestM[0].split("-"); out.push(`Лучший месяц — <b>${MONTHS[+mm - 1]} ${y}</b>: ${rub(bestM[1])}.`); }
+  if (isFinite(m.reviewRate)) out.push(`Отзыв оставляют в <b>${pct(m.reviewRate)}</b> закрытых заказов${isFinite(m.rating) ? `, средняя оценка ${nf2.format(m.rating)} ★` : ""}.`);
+  const lastSale = list.reduce((a, o) => (o.paid > a ? o.paid : a), "");
+  if (lastSale) { const d = daysBetween(day(lastSale), TODAY); if (d > 14) out.push(`Последняя продажа была <b>${nf0.format(d)} дн. назад</b> (${fmtDay(day(lastSale))}).`); }
+  const lost = buyers.filter(b => b.orders > 1 && b.sinceLast > 90).length;
+  if (lost) out.push(`${nf0.format(lost)} постоянных покупателей не заходили больше 90 дней — можно написать им о новых лотах.`);
+  $("insights").innerHTML = out.map(s => `<li>${s}</li>`).join("");
+}
+
+// ---------- main ----------
+function update() {
+  const { cur, prev, from, to } = filtered();
+  const m = metrics(cur);
+  renderKpis(m, prev ? metrics(prev) : null);
+  renderTrend(cur, from, to);
+  const cells = renderHeat(cur);
+  const positions = renderPositions(cur);
+  const buyers = renderBuyers(cur);
+  renderReviews(cur);
+  renderOrders(cur);
+  renderInsights(cur, m, positions, buyers, cells);
+}
+
+function initFilters() {
+  fillSelect($("f-game"), uniq(ORDERS.map(o => o.game)), "Все игры");
+  fillSelect($("f-pos"), uniq(ORDERS.map(o => posKey(o, "cat"))), "Все позиции");
+  fillSelect($("f-status"), uniq(ORDERS.map(o => o.status)), "Все статусы", s => statusInfo(s).label);
+  const bind = (id, key, ev = "change") => $(id).addEventListener(ev, e => { state[key] = e.target.value; state.page = 0; update(); });
+  bind("f-game", "game"); bind("f-pos", "pos"); bind("f-status", "status"); bind("f-buyer", "buyer", "input");
+  bind("f-from", "from"); bind("f-to", "to");
+  $("f-period").addEventListener("change", e => {
+    state.period = e.target.value; const c = state.period === "custom";
+    $("l-from").hidden = $("l-to").hidden = !c; update();
+  });
+  $("f-reset").onclick = () => {
+    for (const k of ["game", "pos", "status", "buyer", "from", "to"]) state[k] = "";
+    state.period = "all"; state.page = 0;
+    for (const id of ["f-game", "f-pos", "f-status", "f-buyer", "f-from", "f-to"]) $(id).value = "";
+    $("f-period").value = "all"; $("l-from").hidden = $("l-to").hidden = true; update();
+  };
+  const seg = (id, key) => $(id).querySelectorAll("button").forEach(b => b.onclick = () => {
+    state[key] = b.dataset.v; $(id).querySelectorAll("button").forEach(x => x.setAttribute("aria-pressed", x === b)); update();
+  });
+  seg("trend-metric", "trendMetric"); seg("trend-gran", "trendGran"); seg("pos-group", "posGroup"); seg("pos-metric", "posMetric");
+  document.querySelectorAll("[data-theme-btn]").forEach(b => b.onclick = () => {
+    const t = b.dataset.themeBtn;
+    if (t === "auto") document.documentElement.removeAttribute("data-theme"); else document.documentElement.dataset.theme = t;
+    document.querySelectorAll("[data-theme-btn]").forEach(x => x.setAttribute("aria-pressed", x === b));
+    try { localStorage.setItem("fp-theme", t); } catch (_) {}
+  });
+  try { const t = localStorage.getItem("fp-theme"); if (t) document.querySelector(`[data-theme-btn="${t}"]`)?.click(); } catch (_) {}
+}
+
+const days = ORDERS.map(o => day(o.paid)).filter(Boolean).sort();
+$("meta").textContent = ORDERS.length
+  ? `${nf0.format(ORDERS.length)} заказов · ${fmtDay(days[0])} — ${fmtDay(days[days.length - 1])} · обновлено ${fmtDT(DATA.generated)}`
+  : "В выгрузке нет заказов";
+initFilters();
+update();
+let rt; addEventListener("resize", () => { clearTimeout(rt); rt = setTimeout(update, 150); });
+})();
+</script>
+</body>
+</html>

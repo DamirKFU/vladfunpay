@@ -1,0 +1,15 @@
+.env
+venv/
+.venv/
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+node_modules/
+dist/
+backend/.data/
+*.jsonl
+!backend/tests/**/*.jsonl
+report.html
+legacy/.sales_parts/
+.sales_parts/
+*.tsbuildinfo

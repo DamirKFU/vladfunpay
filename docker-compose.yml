@@ -1,0 +1,60 @@
+# Запуск: docker compose up -d --build   →   http://localhost:8080
+name: funpay-seller
+
+services:
+  mongo:
+    image: mongo:7.0
+    restart: unless-stopped
+    volumes:
+      - mongo-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    environment:
+      MONGO_URL: mongodb://mongo:27017
+      MONGO_DB: funpay
+      DATA_DIR: /data
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      LOG_TTL_DAYS: ${LOG_TTL_DAYS:-30}
+    volumes:
+      # Ключ шифрования секретов и подписи входа. Не удаляйте этот volume.
+      - app-data:/data
+    depends_on:
+      mongo:
+        condition: service_healthy
+
+  frontend:
+    build: ./frontend
+    restart: unless-stopped
+    ports:
+      # По умолчанию только с этого компьютера. Чтобы открыть в сети,
+      # поставьте APP_BIND=0.0.0.0 в .env.
+      - "${APP_BIND:-127.0.0.1}:${APP_PORT:-8080}:80"
+    depends_on:
+      - backend
+
+  # Тесты против настоящей MongoDB:
+  #   docker compose --profile test run --rm backend-tests
+  backend-tests:
+    profiles: ["test"]
+    build:
+      context: ./backend
+      args:
+        INSTALL_DEV: "1"
+    environment:
+      MONGO_TEST_URL: mongodb://mongo:27017
+      DATA_DIR: /tmp/data
+    command: ["python", "-m", "pytest", "-q", "-p", "no:cacheprovider"]
+    depends_on:
+      mongo:
+        condition: service_healthy
+
+volumes:
+  mongo-data:
+  app-data:

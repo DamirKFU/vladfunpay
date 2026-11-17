@@ -1,0 +1,30 @@
+AUTH_INVALID = 'неверный логин или пароль'
+AUTH_TOKEN_INVALID = 'сессия истекла, войдите снова'
+AUTH_TOO_MANY_ATTEMPTS = 'слишком много попыток входа, подождите минуту'
+AUTH_SETUP_DONE = 'администратор уже создан'
+AUTH_PASSWORD_WEAK = 'пароль должен быть не короче 8 символов'
+USER_EXISTS = 'пользователь {} уже существует'
+USER_NOT_FOUND = 'пользователь {} не найден'
+USER_LAST_ONE = 'нельзя удалить последнего пользователя'
+
+SETTINGS_NOT_CONFIGURED = 'не заполнено в настройках: {}'
+
+SYNC_ALREADY_RUNNING = 'синхронизация уже идёт'
+FUNPAY_AUTH_FAILED = 'FunPay не принял golden_key: обновите его в настройках'
+FUNPAY_BLOCKED = 'FunPay показал капчу или блокировку, пройдите её в браузере'
+FUNPAY_EXPORT_FAILED = 'выгрузка FunPay не удалась: {}'
+
+STEAM_NOT_FRIEND = '{} нет в списке друзей'
+STEAM_PROTECTED = '{} в защищённом списке, удалять нельзя'
+STEAM_ACTIVE_ORDER = 'у {} есть открытый заказ, удалять нельзя'
+STEAM_LINK_INVALID = 'не похоже на ссылку Steam: {}'
+STEAM_REQUEST_FAILED = 'Steam ответил ошибкой: {}'
+STEAM_REMOVAL_DISABLED = 'удаление друзей отключено в настройках'
+
+LLM_NOT_CONFIGURED = 'ИИ не настроен: нужны API-ключ и folder id Яндекса'
+LLM_REQUEST_FAILED = 'запрос к ИИ не удался: {}'
+LLM_DAILY_LIMIT = 'дневной лимит токенов исчерпан ({} из {})'
+
+SANDBOX_CHAT_NOT_FOUND = 'тестовый чат {} не найден'
+SANDBOX_OFFER_NOT_FOUND = 'тестовый лот {} не найден'
+ORDER_NOT_FOUND = 'заказ {} не найден'
