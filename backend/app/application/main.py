@@ -9,7 +9,13 @@ from pymongo.asynchronous.database import AsyncDatabase
 
 from app.application.deps import get_container
 from app.application.errors import install_logging_and_errors
-from app.application.routes import admin, auth, bot, lots, services, steam
+from app.application.routes import (
+    admin,
+    auth,
+    journal,
+    services,
+    steam,
+)
 from app.container import init_container
 from app.core.log_sink import (
     QueueLogHandler,
@@ -57,7 +63,7 @@ def create_app(
 
     app = FastAPI(
         title='FunPay Seller',
-        description='Продажи FunPay, бот с ИИ, друзья Steam.',
+        description='Продажи и заказы FunPay, друзья Steam.',
         lifespan=lifespan,
         docs_url='/api/docs',
         openapi_url='/api/openapi.json',
@@ -70,7 +76,7 @@ def create_app(
     async def health() -> dict:
         return {'ok': True}
 
-    for module in (auth, admin, bot, steam, services, lots):
+    for module in (auth, admin, steam, services, journal):
         app.include_router(module.router, prefix='/api')
     return app
 

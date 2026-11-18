@@ -6,7 +6,7 @@ async def test_secrets_are_encrypted_and_masked(container, settings_service):
     await settings_service.update(
         {
             'funpay': {'golden_key': 'gk-1234567890'},
-            'yandex': {'folder_id': 'b1gfolder'},
+            'friends': {'auto_cleanup': True},
         },
     )
     raw = await container.resolve(BaseSettingsRepository).load()
@@ -14,7 +14,7 @@ async def test_secrets_are_encrypted_and_masked(container, settings_service):
 
     public = await settings_service.public()
     assert public['funpay']['golden_key'] == {'is_set': True, 'hint': '…7890'}
-    assert public['yandex']['folder_id'] == 'b1gfolder'
+    assert 'auto_cleanup' not in public['friends']
     assert (await settings_service.get()).funpay.golden_key == 'gk-1234567890'
 
 
@@ -31,10 +31,9 @@ async def test_secret_update_rules(settings_service):
 
 
 def test_old_settings_get_new_defaults():
-    s = from_dict(AppSettings, {'bot': {'enabled': True, 'unknown': 1}})
-    assert s.bot.enabled is True
-    assert s.bot.reply_delay_sec == 7
-    assert s.friends.keep_free_slots == 10
+    s = from_dict(AppSettings, {'bot': {'enabled': True}})
+    assert not hasattr(s, 'bot')
+    assert s.friends.refresh_hours == 3
 
 
 def test_setup_login_and_protection(client):
@@ -95,10 +94,10 @@ def test_settings_patch_via_api_never_returns_secret(auth_client):
     resp = auth_client.patch(
         '/api/settings',
         json={
-            'yandex': {'api_key': 'AQVN-secret-key'},
-            'bot': {'reply_delay_sec': 9},
+            'steam': {'api_key': 'AQVN-secret-key'},
+            'funpay': {'auto_raise': True},
         },
     )
     assert resp.status_code == 200
     assert 'AQVN-secret-key' not in resp.text
-    assert resp.json()['bot']['reply_delay_sec'] == 9
+    assert resp.json()['funpay']['auto_raise'] is True

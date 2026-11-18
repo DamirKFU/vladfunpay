@@ -1,4 +1,4 @@
-"""Автоподнятие лотов, Telegram и ошибки фронта в общий лог."""
+"""Автоподнятие лотов, ошибки фронта в общий лог."""
 
 import logging
 
@@ -6,13 +6,8 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 
 from app.application.deps import current_user, resolve
-from app.integrations.notify.base import NotifyError
-from app.integrations.notify.telegram import find_chats
 from app.models.domain import User
-from app.usecases.alerts import OwnerAlerts
-from app.usecases.errors import ValidationError
 from app.usecases.raise_lots import RaiseService
-from app.usecases.settings import SettingsService
 
 router = APIRouter(dependencies=[Depends(current_user)])
 front_log = logging.getLogger('frontend')
@@ -37,37 +32,6 @@ async def raise_now(
 ) -> dict:
     await service.tick(force=True)
     return await service.status()
-
-
-@router.post('/telegram/test', tags=['telegram'], summary='Тест уведомлений')
-async def telegram_test(
-    alerts: OwnerAlerts = Depends(resolve(OwnerAlerts)),
-) -> dict:
-    await alerts.test()
-    return {'ok': True}
-
-
-@router.post(
-    '/telegram/detect-chat',
-    tags=['telegram'],
-    summary='Найти chat_id: напишите боту /start и вызовите',
-)
-async def telegram_detect(
-    settings: SettingsService = Depends(resolve(SettingsService)),
-) -> dict:
-    s = await settings.get()
-    if not s.telegram.bot_token:
-        raise ValidationError('сначала сохраните токен бота')
-    try:
-        chats = await find_chats(s.telegram.bot_token)
-    except NotifyError as e:
-        raise ValidationError(str(e)) from e
-    if not chats:
-        raise ValidationError(
-            'бот ещё не получал сообщений: напишите ему /start в Telegram',
-        )
-    await settings.update({'telegram': {'chat_id': chats[-1]['chat_id']}})
-    return {'chats': chats, 'chat_id': chats[-1]['chat_id']}
 
 
 @router.post('/logs/client', tags=['logs'], summary='Ошибка во фронте')

@@ -1,13 +1,12 @@
 import { useMemo, useState } from 'react'
 
 import { api } from '../api'
+import { FriendsReport, RankedFriend } from '../types'
 import { Action, Alert, Tile, fmtDate, nf, useLoad } from '../components/ui'
-import { FriendsReport, RankedFriend, Settings } from '../types'
 
 const TIERS: Record<string, [string, string]> = {
-  protected: ['good', 'защищён'],
+  protected: ['good', 'закреплён'],
   open_order: ['good', 'открытый заказ'],
-  long_buyer: ['', 'давний покупатель'],
   buyer: ['', 'покупатель'],
   friend: ['', 'друг'],
   invite: ['warn', 'заявка'],
@@ -17,9 +16,6 @@ const RELATION = { friend: 'друг', invite_sent: 'исходящая заяв
 
 export default function SteamPage() {
   const report = useLoad(() => api.get<FriendsReport>('/steam/friends'))
-  const settings = useLoad(() => api.get<Settings>('/settings'))
-  const removalOff = settings.data ? !settings.data.friends.allow_removal : false
-  const [selected, setSelected] = useState<Set<string>>(new Set())
   const [filter, setFilter] = useState('')
   const [error, setError] = useState('')
   const [result, setResult] = useState('')
@@ -37,33 +33,13 @@ export default function SteamPage() {
     )
   }, [r, filter])
 
-  function toggle(id: string) {
-    const next = new Set(selected)
-    if (next.has(id)) next.delete(id)
-    else next.add(id)
-    setSelected(next)
-  }
-
-  async function remove(ids: string[]) {
-    const res = await api.post<{ steam_id: string; removed?: boolean; error?: string }[]>(
-      '/steam/friends/remove',
-      { steam_ids: ids },
-    )
-    const ok = res.filter((x) => x.removed).length
-    const errors = res.filter((x) => x.error).map((x) => x.error)
-    setResult(`Удалено: ${ok}.${errors.length ? ' Не удалось: ' + errors.join('; ') : ''}`)
-    setSelected(new Set())
-    await report.reload()
-  }
-
   return (
     <>
       <div className="page-head">
         <div>
           <h1>Друзья Steam</h1>
           <div className="sub">
-            Порядок важности: защищённые → с открытым заказом → давние покупатели → покупатели → друзья (по
-            уровню) → заявки. Удаляются только снизу, и только после подтверждения.
+            Сначала закреплённые и с открытым заказом. Дальше по дате последней покупки и добавления в друзья. Заявки внизу.
           </div>
         </div>
         <div className="row">
@@ -89,36 +65,15 @@ export default function SteamPage() {
         </div>
       </div>
       <Alert kind="bad">{error || report.error}</Alert>
-      {removalOff ? (
-        <Alert kind="warn">Удаление друзей отключено в «Настройки → Друзья». Список и кандидаты видны, но удалить никого нельзя.</Alert>
-      ) : null}
       {refreshing ? (
-        <Alert kind="warn">Загружаю друзей, имена и уровни из Steam. Первый раз — до полуминуты, дальше уровни берутся из кэша.</Alert>
+        <Alert kind="warn">Загружаю список друзей и заявки из Steam.</Alert>
       ) : null}
       <Alert kind="good">{result}</Alert>
       {r ? (
         <div className="tiles">
           <Tile k="Занято слотов" v={nf.format(r.used)} d="друзья + исходящие заявки" />
           <Tile k="Лимит" v={r.limit ? nf.format(r.limit) : '—'} d={r.own_level != null ? `уровень ${r.own_level}` : 'обновите из Steam'} />
-          <Tile k="Держать свободными" v={nf.format(r.keep_free)} />
-          <Tile k="Нужно освободить" v={nf.format(r.to_free)} d={`обновлено ${fmtDate(r.refreshed_at)}`} />
-        </div>
-      ) : null}
-      {r && r.candidates.length ? (
-        <div className="card stack">
-          <h2>Кандидаты на удаление ({r.candidates.length})</h2>
-          <FriendsTable rows={r.candidates} selected={selected} toggle={toggle} />
-          <div className="row">
-            <Action
-              className="danger"
-              disabled={removalOff}
-              confirm={`Удалить из друзей ${r.candidates.length} чел.? Это действие в Steam, отменить его нельзя.`}
-              onError={setError}
-              onRun={() => remove(r.candidates.map((c) => c.friend.steam_id))}
-            >
-              Удалить всех кандидатов
-            </Action>
-          </div>
+          <Tile k="Свободно" v={r.limit == null ? '—' : nf.format(Math.max(0, r.limit - r.used))} d={`обновлено ${fmtDate(r.refreshed_at)}`} />
         </div>
       ) : null}
       <div className="card stack">
@@ -126,19 +81,10 @@ export default function SteamPage() {
           <h2>Все по важности</h2>
           <div className="row">
             <input placeholder="Поиск по нику или id" value={filter} onChange={(e) => setFilter(e.target.value)} aria-label="Поиск" />
-            <Action
-              className="danger"
-              disabled={!selected.size || removalOff}
-              confirm={`Удалить выбранных (${selected.size})? Это действие в Steam, отменить его нельзя.`}
-              onError={setError}
-              onRun={() => remove([...selected])}
-            >
-              Удалить выбранных ({selected.size})
-            </Action>
           </div>
         </div>
         {rows.length ? (
-          <FriendsTable rows={rows} selected={selected} toggle={toggle} withProtect onChanged={report.reload} />
+          <FriendsTable rows={rows} onChanged={report.reload} />
         ) : (
           <div className="sub">Список пуст. Задайте ключ Steam Web API и Steam ID в настройках и нажмите «Обновить из Steam».</div>
         )}
@@ -149,9 +95,6 @@ export default function SteamPage() {
 
 function FriendsTable(props: {
   rows: RankedFriend[]
-  selected: Set<string>
-  toggle: (id: string) => void
-  withProtect?: boolean
   onChanged?: () => Promise<void>
 }) {
   return (
@@ -159,15 +102,13 @@ function FriendsTable(props: {
       <table>
         <thead>
           <tr>
-            <th />
             <th className="num">#</th>
             <th>Steam</th>
             <th>Важность</th>
             <th>Покупатель FunPay</th>
-            <th className="num">Уровень</th>
             <th>В друзьях с</th>
             <th>Последний заказ</th>
-            {props.withProtect ? <th /> : null}
+            <th scope="col">Закрепление</th>
           </tr>
         </thead>
         <tbody>
@@ -175,16 +116,7 @@ function FriendsTable(props: {
             const [kind, label] = TIERS[r.tier] ?? ['', r.tier]
             const id = r.friend.steam_id
             return (
-              <tr key={id} className={props.selected.has(id) ? 'sel' : ''}>
-                <td>
-                  <input
-                    type="checkbox"
-                    disabled={!r.removable}
-                    checked={props.selected.has(id)}
-                    onChange={() => props.toggle(id)}
-                    aria-label={`Выбрать ${r.friend.name || id}`}
-                  />
-                </td>
+              <tr key={id}>
                 <td className="num">{r.rank}</td>
                 <td>
                   <a href={`https://steamcommunity.com/profiles/${id}`} target="_blank" rel="noopener noreferrer">
@@ -199,11 +131,9 @@ function FriendsTable(props: {
                   {r.buyer_name || '—'}
                   {r.orders ? <div className="sub">заказов: {r.orders}</div> : null}
                 </td>
-                <td className="num">{r.friend.level ?? '—'}</td>
                 <td>{fmtDate(r.friend.friend_since)}</td>
                 <td>{fmtDate(r.last_order_at)}</td>
-                {props.withProtect ? (
-                  <td>
+                <td>
                     {r.tier === 'protected' ? (
                       <Action
                         onRun={async () => {
@@ -211,7 +141,7 @@ function FriendsTable(props: {
                           await props.onChanged?.()
                         }}
                       >
-                        Снять защиту
+                        Открепить
                       </Action>
                     ) : (
                       <Action
@@ -221,11 +151,10 @@ function FriendsTable(props: {
                           await props.onChanged?.()
                         }}
                       >
-                        Защитить
+                        Закрепить
                       </Action>
                     )}
-                  </td>
-                ) : null}
+                </td>
               </tr>
             )
           })}

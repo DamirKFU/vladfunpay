@@ -124,3 +124,12 @@ def test_sync_api_and_report(auth_client, integrations, export_records):
     report = auth_client.get('/api/orders/report').text
     assert 'Продажи FunPay' in report
     assert 'SECRETTOKEN' not in report
+
+
+async def test_automatic_sync_skips_recent_success(container, integrations):
+    service = container.resolve(SyncService)
+    await service.run_if_due()
+    await service.run_if_due()
+    runs = await service.history()
+    assert len(runs) == 1
+    assert runs[0].status == SyncStatus.DONE

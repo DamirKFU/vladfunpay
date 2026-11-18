@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends
 
 from app.application.deps import current_user, resolve
-from app.application.schemas import ProtectSchema, SteamIdsSchema
+from app.application.schemas import ProtectSchema
 from app.integrations.provider import NotConfiguredError
 from app.usecases.errors import ValidationError
 from app.usecases.friends import FriendsService
@@ -13,7 +13,7 @@ router = APIRouter(
 )
 
 
-@router.get('/friends', summary='Друзья по важности и кандидаты')
+@router.get('/friends', summary='Друзья Steam и заявки')
 async def friends_report(
     service: FriendsService = Depends(resolve(FriendsService)),
 ):
@@ -30,18 +30,7 @@ async def friends_refresh(
         raise ValidationError(str(e)) from e
 
 
-@router.post('/friends/remove', summary='Удалить выбранных')
-async def friends_remove(
-    schema: SteamIdsSchema,
-    service: FriendsService = Depends(resolve(FriendsService)),
-) -> list[dict]:
-    try:
-        return await service.remove(schema.steam_ids)
-    except NotConfiguredError as e:
-        raise ValidationError(str(e)) from e
-
-
-@router.post('/protected', summary='Защитить от удаления')
+@router.post('/protected', summary='Закрепить друга')
 async def protect(
     schema: ProtectSchema,
     service: FriendsService = Depends(resolve(FriendsService)),
@@ -50,7 +39,7 @@ async def protect(
     return {'ok': True}
 
 
-@router.delete('/protected/{steam_id}', summary='Снять защиту')
+@router.delete('/protected/{steam_id}', summary='Открепить друга')
 async def unprotect(
     steam_id: str,
     service: FriendsService = Depends(resolve(FriendsService)),

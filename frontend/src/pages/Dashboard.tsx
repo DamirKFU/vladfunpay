@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 
 import { api } from '../api'
 import { Action, Alert, Tile, fmtDate, nf, useLoad, usePolling } from '../components/ui'
@@ -11,20 +11,20 @@ export default function Dashboard() {
   const runs = useLoad(() => api.get<SyncRun[]>('/sync/runs'))
   const report = useLoad(() => api.text('/orders/report'))
   const [error, setError] = useState('')
-  const running = runs.data?.some((r) => r.status === 'running') ?? false
-
-  usePolling(
-    async () => {
-      const wasRunning = running
-      await runs.reload()
-      await summary.reload()
-      if (wasRunning) await report.reload()
-    },
-    3000,
-    running,
-  )
-
   const last = runs.data?.[0]
+  const running = last?.status === 'running'
+  const lastSuccessId = runs.data?.find((run) => run.status === 'done')?.id
+  const { reload: reloadSummary } = summary
+  const { reload: reloadReport } = report
+
+  usePolling(() => void runs.reload(), running ? 3000 : 15000)
+  useEffect(() => {
+    if (lastSuccessId) {
+      void reloadSummary()
+      void reloadReport()
+    }
+  }, [lastSuccessId, reloadSummary, reloadReport])
+
   const firstSync = (summary.data?.count ?? 0) === 0
 
   return (
@@ -33,7 +33,7 @@ export default function Dashboard() {
         <div>
           <h1>Продажи</h1>
           <div className="sub">
-            Данные из встроенной выгрузки FunPay. Первый раз — за всё время, дальше — только новые.
+            Первая выгрузка за всё время, затем синхронизация продаж примерно раз в час.
           </div>
         </div>
         <div className="row">
@@ -52,7 +52,7 @@ export default function Dashboard() {
           <Action onRun={() => api.download('/data/export', 'funpay-db.zip')}>Выгрузить базу (ZIP)</Action>
         </div>
       </div>
-      <Alert kind="bad">{error || summary.error || runs.error}</Alert>
+      <Alert kind="bad">{error || summary.error || runs.error || report.error}</Alert>
       <div className="tiles">
         <Tile k="Заказов в базе" v={summary.data ? nf.format(summary.data.count) : '—'} />
         <Tile k="Последняя оплата" v={fmtDate(summary.data?.last_paid_at)} />

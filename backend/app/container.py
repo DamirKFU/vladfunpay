@@ -3,21 +3,13 @@ from functools import lru_cache
 from punq import Container, Scope
 from pymongo.asynchronous.database import AsyncDatabase
 
-from app.bot.service import BotService
 from app.core.security import SecretBox, load_or_create_key
 from app.db.dump import MongoDatabaseDumper
 from app.db.mongo import create_database
-from app.integrations.funpay.sandbox import SandboxMarketplace
 from app.integrations.provider import BaseIntegrations, LiveIntegrations
-from app.integrations.steam.friendship import (
-    SandboxFriendshipLookup,
-    SnapshotFriendshipLookup,
-)
 from app.repositories import base, mongo
 from app.settings import Config
-from app.usecases.alerts import OwnerAlerts
 from app.usecases.auth import AuthService, LoginLimiter
-from app.usecases.chats import ChatService, SandboxService
 from app.usecases.data import (
     BaseDatabaseDumper,
     DatabaseExportService,
@@ -25,11 +17,11 @@ from app.usecases.data import (
     ReportService,
 )
 from app.usecases.friends import FriendsService
-from app.usecases.lots import LotCatalogService
+from app.usecases.journal import OrderJournalService
 from app.usecases.raise_lots import RaiseService
 from app.usecases.settings import SettingsService
 from app.usecases.sync import SyncService
-from app.workers.runtime import FunPayMarketplaceProvider, Workers
+from app.workers.runtime import Workers
 
 REPOSITORIES = (
     (base.BaseUserRepository, mongo.MongoUserRepository),
@@ -37,12 +29,9 @@ REPOSITORIES = (
     (base.BaseOrderRepository, mongo.MongoOrderRepository),
     (base.BaseSyncRunRepository, mongo.MongoSyncRunRepository),
     (base.BaseLogRepository, mongo.MongoLogRepository),
-    (base.BaseChatRepository, mongo.MongoChatRepository),
-    (base.BaseUsageRepository, mongo.MongoUsageRepository),
+    (base.BaseSalesSnapshotRepository, mongo.MongoSalesSnapshotRepository),
     (base.BaseSteamRepository, mongo.MongoSteamRepository),
     (base.BaseSteamLinkRepository, mongo.MongoSteamLinkRepository),
-    (base.BaseSandboxRepository, mongo.MongoSandboxRepository),
-    (base.BaseLotRepository, mongo.MongoLotRepository),
 )
 
 SINGLETONS = (
@@ -54,16 +43,8 @@ SINGLETONS = (
     ReportService,
     LogService,
     DatabaseExportService,
-    ChatService,
-    SandboxMarketplace,
-    SandboxService,
-    SnapshotFriendshipLookup,
-    SandboxFriendshipLookup,
-    OwnerAlerts,
     RaiseService,
-    LotCatalogService,
-    BotService,
-    FunPayMarketplaceProvider,
+    OrderJournalService,
     Workers,
 )
 

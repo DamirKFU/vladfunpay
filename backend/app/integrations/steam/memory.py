@@ -1,10 +1,8 @@
 from dataclasses import dataclass, field
 
-from app.core import messages
 from app.integrations.steam.base import (
     BaseSteamGateway,
     PlayerSummary,
-    SteamError,
 )
 from app.models.domain import SteamFriend
 
@@ -17,7 +15,6 @@ class MemorySteamGateway(BaseSteamGateway):
     level_map: dict[str, int] = field(default_factory=dict)
     names: dict[str, str] = field(default_factory=dict)
     vanity_map: dict[str, str] = field(default_factory=dict)
-    removed: list[str] = field(default_factory=list)
     level_calls: int = 0
 
     async def friends(self) -> list[SteamFriend]:
@@ -35,14 +32,6 @@ class MemorySteamGateway(BaseSteamGateway):
             s: PlayerSummary(name=self.names.get(s, s), avatar='')
             for s in steam_ids
         }
-
-    async def remove_friend(self, steam_id: str) -> None:
-        if not any(f.steam_id == steam_id for f in self.friend_list):
-            raise SteamError(messages.STEAM_NOT_FRIEND.format(steam_id))
-        self.friend_list = [
-            f for f in self.friend_list if f.steam_id != steam_id
-        ]
-        self.removed.append(steam_id)
 
     async def resolve_vanity(self, vanity: str) -> str | None:
         return self.vanity_map.get(vanity)

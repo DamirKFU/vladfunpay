@@ -1,9 +1,8 @@
 """Steam: официальный Web API (ключ) + cookie steamcommunity.com.
 
 Web API (лимит 100 000 вызовов в сутки): список друзей с датой
-дружбы, имена, уровни. Ожидающие заявки и удаление делаются через сайт
-steamcommunity.com с cookie steamLoginSecure и sessionid — это серая
-зона, поэтому в интерфейсе удаление всегда подтверждается вручную.
+дружбы, имена и уровень владельца для расчёта слотов. Ожидающие заявки
+читаются на steamcommunity.com с cookie steamLoginSecure.
 """
 
 import asyncio
@@ -17,6 +16,7 @@ import httpx
 from bs4 import BeautifulSoup
 
 from app.core import messages
+from app.core.masking import masker
 from app.integrations.steam.base import (
     BaseSteamGateway,
     PlayerSummary,
@@ -38,15 +38,12 @@ class SteamWebGateway(BaseSteamGateway):
     api_key: str
     steam_id: str
     login_secure: str = ''
-    session_id: str = ''
     user_agent: str = 'Mozilla/5.0'
 
     def _client(self) -> httpx.AsyncClient:
         cookies = {}
         if self.login_secure:
             cookies['steamLoginSecure'] = self.login_secure
-        if self.session_id:
-            cookies['sessionid'] = self.session_id
         return httpx.AsyncClient(
             timeout=30,
             cookies=cookies,
@@ -84,11 +81,21 @@ class SteamWebGateway(BaseSteamGateway):
                 via,
                 resp.status_code,
                 ms,
-                resp.text[:300],
+                self._response_detail(resp) or 'ответ без пояснения',
             )
             raise SteamError(explain_status(path, resp.status_code))
+        try:
+            payload = resp.json()
+        except ValueError:
+            payload = None
+        if not isinstance(payload, dict):
+            detail = f'{path}: HTTP 200, ожидался объект JSON'
+            log.warning(
+                'Steam API %s (%s): %s за %.0f мс', path, via, detail, ms
+            )
+            raise SteamError(messages.STEAM_REQUEST_FAILED.format(detail))
         log.info('Steam API %s (%s) → 200 за %.0f мс', path, via, ms)
-        return resp.json()
+        return payload
 
     async def friends(self) -> list[SteamFriend]:
         params = {'steamid': self.steam_id, 'relationship': 'friend'}
@@ -126,14 +133,22 @@ class SteamWebGateway(BaseSteamGateway):
 
     async def _pending(self) -> list[SteamFriend]:
         url = f'{COMMUNITY}/profiles/{self.steam_id}/friends/pending'
-        async with self._client() as client:
-            resp = await client.get(url)
+        try:
+            async with self._client() as client:
+                resp = await client.get(url)
+        except httpx.HTTPError as exc:
+            log.warning(
+                'Steam: загрузка заявок не удалась (%s)',
+                type(exc).__name__,
+            )
+            return []
         if resp.status_code != 200 or '/login' in str(resp.url):
             log.warning(
-                'Steam: страница заявок недоступна (HTTP %d, %s) — '
-                'обновите cookie steamLoginSecure',
+                'Steam: страница заявок недоступна, HTTP %d. %s',
                 resp.status_code,
-                resp.url,
+                'Steam перенаправил на вход.'
+                if '/login' in resp.url.path
+                else self._response_detail(resp) or 'Ответ без пояснения.',
             )
             return []
         pending = parse_pending_page(resp.text)
@@ -192,31 +207,38 @@ class SteamWebGateway(BaseSteamGateway):
                 )
         return result
 
-    async def remove_friend(self, steam_id: str) -> None:
-        if not (self.login_secure and self.session_id):
-            raise SteamError(
-                messages.SETTINGS_NOT_CONFIGURED.format(
-                    'Steam steamLoginSecure и sessionid',
+    def _response_detail(self, response: httpx.Response) -> str:
+        try:
+            payload = response.json()
+        except ValueError:
+            payload = None
+        if response.text.strip().lower() in ('false', 'null', '0'):
+            detail = ''
+        elif isinstance(payload, dict):
+            detail = next(
+                (
+                    payload[key]
+                    for key in ('error', 'message', 'detail')
+                    if isinstance(payload.get(key), str)
+                    and payload[key].strip()
                 ),
+                '',
             )
-        async with self._client() as client:
-            resp = await client.post(
-                f'{COMMUNITY}/actions/RemoveFriendAjax',
-                data={'sessionID': self.session_id, 'steamid': steam_id},
-            )
-        if resp.status_code != 200 or resp.text.strip() in ('false', ''):
-            log.warning(
-                'Steam: удаление %s не удалось: HTTP %d %s',
-                steam_id,
-                resp.status_code,
-                resp.text[:200],
-            )
-            raise SteamError(
-                messages.STEAM_REQUEST_FAILED.format(
-                    f'удаление {steam_id}: HTTP {resp.status_code}',
-                ),
-            )
-        log.info('Steam: удалён %s', steam_id, extra={'steam_id': steam_id})
+        elif response.text.lstrip().startswith('<'):
+            soup = BeautifulSoup(response.text, 'html.parser')
+            heading = soup.select_one('h1, title')
+            detail = heading.get_text(' ', strip=True) if heading else ''
+        else:
+            detail = response.text
+        for secret in (
+            self.api_key,
+            self.login_secure,
+            unquote(self.login_secure),
+            access_token(self.login_secure),
+        ):
+            if secret:
+                detail = detail.replace(secret, '***')
+        return ' '.join(masker.mask(detail).split())[:300]
 
     async def resolve_vanity(self, vanity: str) -> str | None:
         data = await self._api(

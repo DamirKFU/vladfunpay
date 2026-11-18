@@ -13,7 +13,7 @@ class User:
 
 @dataclass
 class Order:
-    """Продажа FunPay в виде, удобном для статистики и бота."""
+    """Продажа FunPay в виде, удобном для статистики."""
 
     order_uid: str
     status: str  # paid / closed / refunded
@@ -63,86 +63,6 @@ class LogEntry:
     context: dict[str, Any] = field(default_factory=dict)
 
 
-class Author(StrEnum):
-    BUYER = 'buyer'
-    BOT = 'bot'
-    SELLER = 'seller'
-    SYSTEM = 'system'
-
-
-class Channel(StrEnum):
-    FUNPAY = 'funpay'
-    SANDBOX = 'sandbox'
-
-
-@dataclass
-class ChatMessage:
-    channel: Channel
-    chat_id: str
-    message_id: int
-    author: Author
-    text: str
-    created_at: datetime
-    buyer_id: int | None = None
-    buyer_name: str = ''
-
-
-@dataclass
-class Conversation:
-    channel: Channel
-    chat_id: str
-    buyer_id: int | None
-    buyer_name: str
-    last_message_at: datetime
-    last_answered_id: int = 0
-    needs_human: bool = False
-    human_reason: str = ''
-    replies_day: str = ''
-    replies_today: int = 0
-
-
-@dataclass
-class ToolCallTrace:
-    name: str
-    arguments: dict[str, Any]
-    result: Any
-
-
-@dataclass
-class BotTrace:
-    channel: Channel
-    chat_id: str
-    created_at: datetime
-    input_text: str
-    reply: str | None
-    outcome: str  # replied / template / skipped / discarded / error
-    detail: str = ''
-    tool_calls: list[ToolCallTrace] = field(default_factory=list)
-    tokens: int = 0
-
-
-@dataclass
-class OpenOrder:
-    order_id: str
-    title: str
-    price: float
-    buyer_id: int | None
-    buyer_name: str
-    status: str = 'paid'
-    created_at: datetime | None = None
-
-
-@dataclass
-class Offer:
-    offer_id: str
-    title: str
-    price: float
-    amount: int | None
-    category: str = ''
-    auto_delivery: bool = False
-    description: str = ''
-
-
 class Relationship(StrEnum):
     FRIEND = 'friend'
     INVITE_SENT = 'invite_sent'
@@ -154,17 +74,13 @@ class SteamFriend:
     steam_id: str
     relationship: Relationship
     name: str = ''
-    level: int | None = None
     friend_since: datetime | None = None
     avatar: str = ''
 
 
 class FriendTier(StrEnum):
-    """Важность друга: чем меньше номер, тем позже его можно удалить."""
-
     PROTECTED = 'protected'
     OPEN_ORDER = 'open_order'
-    LONG_BUYER = 'long_buyer'
     BUYER = 'buyer'
     FRIEND = 'friend'
     INVITE = 'invite'
@@ -175,8 +91,6 @@ class RankedFriend:
     friend: SteamFriend
     tier: FriendTier
     rank: int
-    removable: bool
-    reason: str
     buyer_name: str = ''
     last_order_at: datetime | None = None
     orders: int = 0
@@ -187,16 +101,13 @@ class FriendsReport:
     own_level: int | None
     limit: int | None
     used: int
-    keep_free: int
-    to_free: int
     ranked: list[RankedFriend]
-    candidates: list[RankedFriend]
     refreshed_at: datetime | None
 
 
 @dataclass
 class SteamLinkRecord:
-    channel: Channel
+    channel: str
     order_id: str
     buyer_id: int | None
     buyer_name: str
@@ -205,17 +116,18 @@ class SteamLinkRecord:
     saved_at: datetime
 
 
-@dataclass
-class LotRecord:
-    """Лот в каталоге: карточка FunPay (или песочницы) и её тип товара."""
-
-    channel: Channel
-    lot_id: str
+@dataclass(frozen=True)
+class SalePreview:
+    order_id: str
     title: str
-    description: str = ''
-    type_id: str = ''
-    assigned_by: str = ''  # manual / keywords / ai / default
-    amount: int | None = None
-    auto_delivery: bool = False
-    price: float = 0.0
-    updated_at: datetime | None = None
+    buyer_name: str
+    price: float
+    currency: str
+    status: str
+    date_text: str
+
+
+@dataclass(frozen=True)
+class SalesSnapshot:
+    refreshed_at: datetime
+    items: list[SalePreview]

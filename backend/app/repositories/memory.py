@@ -1,35 +1,25 @@
 import copy
-from collections import defaultdict
 from dataclasses import dataclass, field, replace
 from datetime import datetime
 from typing import Any
 
 from app.models.domain import (
-    BotTrace,
-    Channel,
-    ChatMessage,
-    Conversation,
     LogEntry,
-    LotRecord,
-    Offer,
-    OpenOrder,
     Order,
+    SalesSnapshot,
     SteamFriend,
     SteamLinkRecord,
     SyncRun,
     User,
 )
 from app.repositories.base import (
-    BaseChatRepository,
     BaseLogRepository,
-    BaseLotRepository,
     BaseOrderRepository,
-    BaseSandboxRepository,
+    BaseSalesSnapshotRepository,
     BaseSettingsRepository,
     BaseSteamLinkRepository,
     BaseSteamRepository,
     BaseSyncRunRepository,
-    BaseUsageRepository,
     BaseUserRepository,
 )
 
@@ -186,108 +176,6 @@ class MemoryLogRepository(BaseLogRepository):
         return sorted({e.source for e in self._entries})
 
 
-def _key(channel: Channel, chat_id: str) -> tuple[str, str]:
-    return str(channel), chat_id
-
-
-@dataclass
-class MemoryChatRepository(BaseChatRepository):
-    _messages: dict[tuple[str, str], list[ChatMessage]] = field(
-        default_factory=lambda: defaultdict(list),
-        kw_only=True,
-    )
-    _conversations: dict[tuple[str, str], Conversation] = field(
-        default_factory=dict,
-        kw_only=True,
-    )
-    _traces: list[BotTrace] = field(default_factory=list, kw_only=True)
-
-    async def add_message(self, message: ChatMessage) -> None:
-        bucket = self._messages[_key(message.channel, message.chat_id)]
-        if any(m.message_id == message.message_id for m in bucket):
-            return
-        bucket.append(message)
-
-    async def messages(
-        self,
-        channel: Channel,
-        chat_id: str,
-        limit: int,
-    ) -> list[ChatMessage]:
-        bucket = sorted(
-            self._messages[_key(channel, chat_id)],
-            key=lambda m: m.message_id,
-        )
-        return bucket[-limit:]
-
-    async def get_conversation(
-        self,
-        channel: Channel,
-        chat_id: str,
-    ) -> Conversation | None:
-        conv = self._conversations.get(_key(channel, chat_id))
-        return replace(conv) if conv else None
-
-    async def save_conversation(self, conversation: Conversation) -> None:
-        key = _key(conversation.channel, conversation.chat_id)
-        self._conversations[key] = replace(conversation)
-
-    async def conversations(
-        self,
-        channel: Channel,
-        limit: int,
-    ) -> list[Conversation]:
-        items = [
-            c
-            for (ch, _), c in self._conversations.items()
-            if ch == str(channel)
-        ]
-        items.sort(key=lambda c: c.last_message_at, reverse=True)
-        return items[:limit]
-
-    async def add_trace(self, trace: BotTrace) -> None:
-        self._traces.append(trace)
-
-    async def traces(
-        self,
-        channel: Channel,
-        chat_id: str | None,
-        limit: int,
-    ) -> list[BotTrace]:
-        items = [
-            t
-            for t in reversed(self._traces)
-            if t.channel == channel
-            and (chat_id is None or t.chat_id == chat_id)
-        ]
-        return items[:limit]
-
-    async def clear(self, channel: Channel, chat_id: str) -> None:
-        key = _key(channel, chat_id)
-        self._messages.pop(key, None)
-        self._conversations.pop(key, None)
-        self._traces = [
-            t
-            for t in self._traces
-            if not (t.channel == channel and t.chat_id == chat_id)
-        ]
-
-
-@dataclass
-class MemoryUsageRepository(BaseUsageRepository):
-    _days: dict[str, int] = field(
-        default_factory=lambda: defaultdict(int),
-        kw_only=True,
-    )
-
-    async def add_tokens(self, day: str, tokens: int) -> int:
-        self._days[day] += tokens
-        return self._days[day]
-
-    async def tokens(self, day: str) -> int:
-        return self._days.get(day, 0)
-
-
 @dataclass
 class MemorySteamRepository(BaseSteamRepository):
     _friends: list[SteamFriend] = field(default_factory=list, kw_only=True)
@@ -317,9 +205,6 @@ class MemorySteamRepository(BaseSteamRepository):
             self._refreshed_at,
         )
 
-    async def remove_from_snapshot(self, steam_id: str) -> None:
-        self._friends = [f for f in self._friends if f.steam_id != steam_id]
-
     async def cached_levels(
         self,
         steam_ids: list[str],
@@ -341,90 +226,22 @@ class MemorySteamRepository(BaseSteamRepository):
 
 
 @dataclass
-class MemorySandboxRepository(BaseSandboxRepository):
-    _offers: dict[str, Offer] = field(default_factory=dict, kw_only=True)
-    _orders: dict[str, OpenOrder] = field(default_factory=dict, kw_only=True)
-    _counters: dict[str, int] = field(
-        default_factory=lambda: defaultdict(int),
-        kw_only=True,
-    )
-    _friends: dict[int, tuple[str | None, datetime | None]] = field(
-        default_factory=dict,
-        kw_only=True,
-    )
-
-    async def offers(self) -> list[Offer]:
-        return list(self._offers.values())
-
-    async def save_offer(self, offer: Offer) -> None:
-        self._offers[offer.offer_id] = replace(offer)
-
-    async def delete_offer(self, offer_id: str) -> None:
-        self._offers.pop(offer_id, None)
-
-    async def orders(self, buyer_id: int | None) -> list[OpenOrder]:
-        return [
-            replace(o)
-            for o in self._orders.values()
-            if buyer_id is None or o.buyer_id == buyer_id
-        ]
-
-    async def save_order(self, order: OpenOrder) -> None:
-        self._orders[order.order_id] = replace(order)
-
-    async def next_id(self, kind: str) -> int:
-        self._counters[kind] += 1
-        return self._counters[kind]
-
-    async def friendship(
-        self,
-        buyer_id: int,
-    ) -> tuple[str | None, datetime | None] | None:
-        return self._friends.get(buyer_id)
-
-    async def set_friendship(
-        self,
-        buyer_id: int,
-        relationship: str | None,
-        since: datetime | None,
-    ) -> None:
-        self._friends[buyer_id] = (relationship, since)
-
-
-@dataclass
 class MemorySteamLinkRepository(BaseSteamLinkRepository):
     _items: dict[tuple[str, str], SteamLinkRecord] = field(
         default_factory=dict,
         kw_only=True,
     )
 
-    async def save(self, record: SteamLinkRecord) -> None:
-        self._items[(str(record.channel), record.order_id)] = record
-
-    async def list(self, channel: Channel) -> list[SteamLinkRecord]:
+    async def list(self, channel: str) -> list[SteamLinkRecord]:
         return [r for (ch, _), r in self._items.items() if ch == str(channel)]
 
 
 @dataclass
-class MemoryLotRepository(BaseLotRepository):
-    _lots: dict[tuple[str, str], LotRecord] = field(
-        default_factory=dict,
-        kw_only=True,
-    )
+class MemorySalesSnapshotRepository(BaseSalesSnapshotRepository):
+    _snapshot: SalesSnapshot | None = field(default=None, init=False)
 
-    async def list(self, channel: Channel) -> list[LotRecord]:
-        return [
-            replace(lot)
-            for (ch, _), lot in self._lots.items()
-            if ch == str(channel)
-        ]
+    async def load(self) -> SalesSnapshot | None:
+        return copy.deepcopy(self._snapshot)
 
-    async def get(self, channel: Channel, lot_id: str) -> LotRecord | None:
-        lot = self._lots.get((str(channel), lot_id))
-        return replace(lot) if lot else None
-
-    async def save(self, lot: LotRecord) -> None:
-        self._lots[(str(lot.channel), lot.lot_id)] = replace(lot)
-
-    async def delete(self, channel: Channel, lot_id: str) -> None:
-        self._lots.pop((str(channel), lot_id), None)
+    async def save(self, snapshot: SalesSnapshot) -> None:
+        self._snapshot = copy.deepcopy(snapshot)

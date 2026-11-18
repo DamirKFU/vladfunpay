@@ -29,10 +29,6 @@ class BaseSteamGateway(ABC):
     ) -> dict[str, PlayerSummary]: ...
 
     @abstractmethod
-    async def remove_friend(self, steam_id: str) -> None:
-        """Удаляет друга или отменяет заявку."""
-
-    @abstractmethod
     async def resolve_vanity(self, vanity: str) -> str | None: ...
 
 

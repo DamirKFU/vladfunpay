@@ -1,11 +1,10 @@
 import { ReactNode, useEffect, useState } from 'react'
 
 import { api, errorText } from '../api'
-import { BotParamsCard, CatalogCard, PromptCard, TemplatesCard } from '../components/BotSettings'
 import { Action, Alert, Field, fmtDate, useLoad } from '../components/ui'
 import { RaiseStatus, Secret, Settings, User } from '../types'
 
-const TABS = ['FunPay', 'ИИ (Яндекс)', 'Steam', 'Бот', 'Промпт', 'Шаблоны', 'Типы товаров', 'Друзья', 'Telegram', 'Пользователи', 'Данные'] as const
+const TABS = ['FunPay', 'Steam', 'Друзья', 'Пользователи', 'Данные'] as const
 type Tab = (typeof TABS)[number]
 
 export default function SettingsPage() {
@@ -90,16 +89,6 @@ export default function SettingsPage() {
             <Field label="User-Agent">
               <input value={draft.funpay.user_agent} onChange={(e) => set('funpay', { user_agent: e.target.value })} />
             </Field>
-            <Field label="Подкатегории своих лотов" hint="Через запятую, например 210. Пусто — возьмутся из заказов.">
-              <input
-                value={draft.funpay.offer_subcategories.join(', ')}
-                onChange={(e) =>
-                  set('funpay', {
-                    offer_subcategories: e.target.value.split(/[ ,]+/).map(Number).filter((n) => n > 0),
-                  })
-                }
-              />
-            </Field>
           </div>
           <h3>Автоподнятие лотов</h3>
           <label className="check">
@@ -119,37 +108,11 @@ export default function SettingsPage() {
         </div>
       ) : null}
 
-      {tab === 'ИИ (Яндекс)' ? (
-        <div className="card stack">
-          <p className="sub">
-            YandexGPT через OpenAI-совместимый API AI Studio. Создайте сервисный аккаунт с ролью
-            ai.languageModels.user и API-ключ к нему. Бюджет в Яндексе не останавливает списания, поэтому жёсткие
-            лимиты — во вкладке «Бот».
-          </p>
-          <div className="fields">
-            {secret('yandex.api_key', 'API-ключ', draft.yandex.api_key)}
-            <Field label="Folder ID">
-              <input value={draft.yandex.folder_id} onChange={(e) => set('yandex', { folder_id: e.target.value })} />
-            </Field>
-            <Field label="Модель" hint="yandexgpt-lite/latest — дешевле, yandexgpt/latest — умнее">
-              <input value={draft.yandex.model} onChange={(e) => set('yandex', { model: e.target.value })} />
-            </Field>
-            <Field label="Адрес API">
-              <input value={draft.yandex.base_url} onChange={(e) => set('yandex', { base_url: e.target.value })} />
-            </Field>
-            <Field label="Температура" hint="0 — строго, 1 — творчески">
-              <input type="number" step="0.1" min={0} max={1} value={draft.yandex.temperature} onChange={(e) => set('yandex', { temperature: Number(e.target.value) })} />
-            </Field>
-          </div>
-          {saveButton('yandex')}
-        </div>
-      ) : null}
-
       {tab === 'Steam' ? (
         <div className="card stack">
           <p className="sub">
             Ключ Web API: steamcommunity.com/dev/apikey. Steam ID — 17 цифр из ссылки на профиль. Cookie
-            steamLoginSecure и sessionid (из браузера, steamcommunity.com) нужны только для заявок и удаления друзей.
+            steamLoginSecure необязательна и нужна для загрузки ожидающих заявок.
           </p>
           <div className="fields">
             {secret('steam.api_key', 'Steam Web API key', draft.steam.api_key)}
@@ -157,39 +120,19 @@ export default function SettingsPage() {
               <input value={draft.steam.steam_id} onChange={(e) => set('steam', { steam_id: e.target.value.trim() })} />
             </Field>
             {secret('steam.login_secure', 'Cookie steamLoginSecure', draft.steam.login_secure)}
-            {secret('steam.session_id', 'Cookie sessionid', draft.steam.session_id)}
           </div>
           {saveButton('steam')}
         </div>
       ) : null}
 
-      {tab === 'Бот' ? <BotParamsCard draft={draft} set={set} save={() => save('bot')} /> : null}
-      {tab === 'Промпт' ? <PromptCard draft={draft} set={set} save={() => save('bot')} /> : null}
-      {tab === 'Шаблоны' ? <TemplatesCard draft={draft} set={set} save={() => save('bot')} /> : null}
-      {tab === 'Типы товаров' ? <CatalogCard draft={draft} set={set} save={() => save('catalog')} /> : null}
-
       {tab === 'Друзья' ? (
         <div className="card stack">
           <div className="fields">
-            <Field label="Держать свободными слотов">
-              <input type="number" min={0} value={draft.friends.keep_free_slots} onChange={(e) => set('friends', { keep_free_slots: Number(e.target.value) })} />
-            </Field>
-            <Field label="Обновлять друзей из Steam, часов" hint="для сроков выдачи подарков; 0 — только вручную">
+            <Field label="Обновлять друзей из Steam, часов" hint="0 — только вручную">
               <input type="number" min={0} value={draft.friends.refresh_hours} onChange={(e) => set('friends', { refresh_hours: Number(e.target.value) })} />
             </Field>
-            <Field label="«Давно в друзьях», дней">
-              <input type="number" min={1} value={draft.friends.long_friend_days} onChange={(e) => set('friends', { long_friend_days: Number(e.target.value) })} />
-            </Field>
           </div>
-          <label className="check">
-            <input type="checkbox" checked={draft.friends.allow_removal} onChange={(e) => set('friends', { allow_removal: e.target.checked })} />
-            Разрешить удаление друзей (выключите — никто и ничто не сможет удалить друга, ни вручную, ни автоочисткой)
-          </label>
-          <label className="check">
-            <input type="checkbox" checked={draft.friends.auto_cleanup} disabled={!draft.friends.allow_removal} onChange={(e) => set('friends', { auto_cleanup: e.target.checked })} />
-            Автоочистка раз в 6 часов (только заявки и «просто друзья», не больше 50 за раз)
-          </label>
-          <h3>Защищённые от удаления</h3>
+          <h3>Закреплённые друзья</h3>
           <ProtectedList
             items={draft.friends.protected}
             onChange={(protectedList) => set('friends', { protected: protectedList })}
@@ -198,68 +141,13 @@ export default function SettingsPage() {
         </div>
       ) : null}
 
-      {tab === 'Telegram' ? (
-        <div className="card stack">
-          <p className="sub">
-            Бот пишет вам в Telegram, когда не смог что-то сделать (инструмент вернул ошибку) или передал чат вам. Если
-            Telegram не привязан, бот просто отвечает покупателю как обычно, а событие остаётся в логах.
-          </p>
-          <ol className="sub" style={{ margin: 0, paddingLeft: 18 }}>
-            <li>Создайте бота у @BotFather и вставьте его токен, сохраните.</li>
-            <li>Напишите своему боту /start и нажмите «Найти chat_id».</li>
-            <li>Нажмите «Отправить тест».</li>
-          </ol>
-          <div className="fields">
-            {secret('telegram.bot_token', 'Токен бота', draft.telegram.bot_token)}
-            <Field label="chat_id" hint="заполнится кнопкой «Найти chat_id»">
-              <input value={draft.telegram.chat_id} onChange={(e) => set('telegram', { chat_id: e.target.value.trim() })} />
-            </Field>
-          </div>
-          <label className="check">
-            <input type="checkbox" checked={draft.telegram.notify_tool_errors} onChange={(e) => set('telegram', { notify_tool_errors: e.target.checked })} />
-            Сообщать, когда инструмент бота вернул ошибку
-          </label>
-          <label className="check">
-            <input type="checkbox" checked={draft.telegram.notify_handoff} onChange={(e) => set('telegram', { notify_handoff: e.target.checked })} />
-            Сообщать, когда бот передал чат вам
-          </label>
-          <label className="check">
-            <input type="checkbox" checked={draft.telegram.notify_sandbox} onChange={(e) => set('telegram', { notify_sandbox: e.target.checked })} />
-            Присылать уведомления и из песочницы (для проверки)
-          </label>
-          <div className="row">
-            {saveButton('telegram')}
-            <Action
-              onRun={async () => {
-                const res = await api.post<{ chat_id: string }>('/telegram/detect-chat')
-                loaded.setData(await api.get<Settings>('/settings'))
-                setMsg({ kind: 'good', text: `chat_id найден: ${res.chat_id}` })
-              }}
-              onError={(text) => setMsg({ kind: 'bad', text })}
-            >
-              Найти chat_id
-            </Action>
-            <Action
-              onRun={async () => {
-                await api.post('/telegram/test')
-                setMsg({ kind: 'good', text: 'Тестовое сообщение отправлено' })
-              }}
-              onError={(text) => setMsg({ kind: 'bad', text })}
-            >
-              Отправить тест
-            </Action>
-          </div>
-        </div>
-      ) : null}
-
-
       {tab === 'Пользователи' ? <UsersCard /> : null}
 
       {tab === 'Данные' ? (
         <div className="card stack">
           <h2>Выгрузка базы</h2>
           <p className="sub">
-            ZIP с коллекциями MongoDB в JSONL: заказы, переписка, разбор ответов бота, друзья Steam, логи. Пароли и
+            ZIP с коллекциями MongoDB в JSONL: заказы, друзья Steam и логи. Пароли и
             ключи в архив не попадают.
           </p>
           <div className="row">

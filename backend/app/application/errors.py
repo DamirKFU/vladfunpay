@@ -96,18 +96,14 @@ def install_logging_and_errors(app: FastAPI) -> None:
 # только при ошибке, иначе они забьют весь журнал.
 POLLING_PATHS = (
     '/api/health',
-    '/api/bot/status',
     '/api/logs',
     '/api/logs/sources',
     '/api/sync/runs',
     '/api/orders/summary',
     '/api/funpay/raise',
+    '/api/journal/orders',
 )
-POLLING_PREFIXES = (
-    '/api/bot/funpay/conversations',
-    '/api/bot/sandbox/conversations',
-    '/api/sandbox/',
-)
+POLLING_PREFIXES = ()
 
 
 def _is_polling(path: str) -> bool:

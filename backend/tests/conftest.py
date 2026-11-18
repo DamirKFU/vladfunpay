@@ -15,30 +15,37 @@ from fastapi.testclient import TestClient  # noqa: E402
 from punq import Container, Scope  # noqa: E402
 
 from app.application.main import create_app  # noqa: E402
-from app.bot.service import BotService  # noqa: E402
 from app.core.security import SecretBox  # noqa: E402
 from app.integrations.funpay.base import (  # noqa: E402
-    BaseMarketplace,
     BaseOrderExporter,
+    SalesReader,
 )
 from app.integrations.funpay.memory import (  # noqa: E402
     MemoryLotRaiser,
     MemoryOrderExporter,
 )
-from app.integrations.funpay.sandbox import SandboxMarketplace  # noqa: E402
-from app.integrations.llm.base import BaseLLM  # noqa: E402
-from app.integrations.llm.scripted import ScriptedLLM  # noqa: E402
-from app.integrations.notify.memory import MemoryNotifier  # noqa: E402
 from app.integrations.provider import BaseIntegrations  # noqa: E402
 from app.integrations.steam.base import BaseSteamGateway  # noqa: E402
 from app.integrations.steam.memory import MemorySteamGateway  # noqa: E402
 from app.models.app_settings import AppSettings  # noqa: E402
+from app.models.domain import SalePreview  # noqa: E402
 from app.repositories import base, memory  # noqa: E402
 from app.settings import Config  # noqa: E402
 from app.usecases.data import BaseDatabaseDumper  # noqa: E402
 from app.usecases.settings import SettingsService  # noqa: E402
 
 pytest_plugins = ['fixtures.records']
+
+
+@dataclass
+class MemorySalesReader(SalesReader):
+    items: list[SalePreview] = field(default_factory=list)
+    fail: bool = False
+
+    async def sales(self) -> list[SalePreview]:
+        if self.fail:
+            raise RuntimeError('FunPay unavailable')
+        return list(self.items)
 
 
 @dataclass
@@ -52,30 +59,21 @@ class MemoryIntegrations(BaseIntegrations):
     steam_gateway: MemorySteamGateway = field(
         default_factory=MemorySteamGateway,
     )
-    model: ScriptedLLM = field(default_factory=ScriptedLLM)
-    funpay_marketplace: BaseMarketplace | None = None
     lot_raiser: MemoryLotRaiser = field(default_factory=MemoryLotRaiser)
-    owner_notifier: MemoryNotifier = field(default_factory=MemoryNotifier)
-    telegram_linked: bool = True
+
+    sales_reader: MemorySalesReader = field(default_factory=MemorySalesReader)
+
+    def sales(self, s: AppSettings) -> SalesReader:
+        return self.sales_reader
 
     def exporter(self, s: AppSettings) -> BaseOrderExporter:
         return self.order_exporter
 
-    def funpay(self, s: AppSettings, subcategories: list[int]):
-        assert self.funpay_marketplace is not None
-        return self.funpay_marketplace
-
     def steam(self, s: AppSettings) -> BaseSteamGateway:
         return self.steam_gateway
 
-    def llm(self, s: AppSettings) -> BaseLLM:
-        return self.model
-
     def raiser(self, s: AppSettings):
         return self.lot_raiser
-
-    def notifier(self, s: AppSettings):
-        return self.owner_notifier if self.telegram_linked else None
 
 
 class NoDumper(BaseDatabaseDumper):
@@ -90,12 +88,9 @@ MEMORY_REPOSITORIES = (
     (base.BaseOrderRepository, memory.MemoryOrderRepository),
     (base.BaseSyncRunRepository, memory.MemorySyncRunRepository),
     (base.BaseLogRepository, memory.MemoryLogRepository),
-    (base.BaseChatRepository, memory.MemoryChatRepository),
-    (base.BaseUsageRepository, memory.MemoryUsageRepository),
+    (base.BaseSalesSnapshotRepository, memory.MemorySalesSnapshotRepository),
     (base.BaseSteamRepository, memory.MemorySteamRepository),
     (base.BaseSteamLinkRepository, memory.MemorySteamLinkRepository),
-    (base.BaseSandboxRepository, memory.MemorySandboxRepository),
-    (base.BaseLotRepository, memory.MemoryLotRepository),
 )
 
 
@@ -141,16 +136,6 @@ def integrations(container: Container) -> MemoryIntegrations:
 @pytest.fixture
 def settings_service(container: Container) -> SettingsService:
     return container.resolve(SettingsService)
-
-
-@pytest.fixture
-def bot_service(container: Container) -> BotService:
-    return container.resolve(BotService)
-
-
-@pytest.fixture
-def sandbox(container: Container) -> SandboxMarketplace:
-    return container.resolve(SandboxMarketplace)
 
 
 @pytest.fixture

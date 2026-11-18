@@ -6,6 +6,7 @@
 """
 
 import asyncio
+import contextlib
 import logging
 import uuid
 from dataclasses import dataclass, field
@@ -24,6 +25,7 @@ from app.usecases.settings import SettingsService
 log = logging.getLogger('sync')
 MSK = ZoneInfo('Europe/Moscow')
 OVERLAP_DAYS = 1
+STATS_SYNC_INTERVAL = timedelta(hours=1)
 
 
 def sync_window(
@@ -45,19 +47,39 @@ class SyncService:
     orders: BaseOrderRepository
     runs: BaseSyncRunRepository
     integrations: BaseIntegrations
-    _lock: asyncio.Lock = field(default_factory=asyncio.Lock)
+    _lock: asyncio.Lock = field(default_factory=asyncio.Lock, init=False)
+    _task: asyncio.Task[SyncRun] | None = field(default=None, init=False)
 
     async def start(self) -> SyncRun:
         """Создаёт запуск и выполняет его в фоне."""
-        if self._lock.locked():
-            raise ConflictError(messages.SYNC_ALREADY_RUNNING)
-        run = await self._new_run()
-        asyncio.create_task(self.execute(run))
+        async with self._lock:
+            if self._task is not None and not self._task.done():
+                raise ConflictError(messages.SYNC_ALREADY_RUNNING)
+            run = await self._new_run()
+            self._task = asyncio.create_task(self.execute(run))
         return run
 
     async def run_now(self) -> SyncRun:
-        run = await self._new_run()
-        return await self.execute(run)
+        await self.start()
+        assert self._task is not None
+        return await asyncio.shield(self._task)
+
+    async def run_if_due(self) -> None:
+        latest = await self.history(limit=1)
+        if latest and latest[0].status == SyncStatus.DONE:
+            finished_at = latest[0].finished_at
+            if (
+                finished_at
+                and datetime.now(MSK) - finished_at < STATS_SYNC_INTERVAL
+            ):
+                return
+        await self.run_now()
+
+    async def stop(self) -> None:
+        if self._task is not None and not self._task.done():
+            self._task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await self._task
 
     async def _new_run(self) -> SyncRun:
         today = datetime.now(MSK).date()
@@ -77,7 +99,7 @@ class SyncService:
         return run
 
     async def execute(self, run: SyncRun) -> SyncRun:
-        async with self._lock:
+        try:
             try:
                 settings = await self.settings.get()
                 exporter = self.integrations.exporter(settings)
@@ -104,9 +126,13 @@ class SyncService:
             except Exception as e:
                 run.status, run.message = SyncStatus.ERROR, str(e)
                 log.exception('Синхронизация упала: %s', e)
+        except asyncio.CancelledError:
+            run.status, run.message = SyncStatus.ERROR, 'сервер остановлен'
+            raise
+        finally:
             run.finished_at = datetime.now(MSK)
             await self.runs.save(run)
-            return run
+        return run
 
     async def history(self, limit: int = 20) -> list[SyncRun]:
         return await self.runs.latest(limit)

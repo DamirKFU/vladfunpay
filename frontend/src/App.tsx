@@ -2,20 +2,16 @@ import { useEffect, useState } from 'react'
 import { NavLink, Navigate, Route, Routes } from 'react-router-dom'
 
 import { api, getToken, setToken, setUnauthorizedHandler } from './api'
-import BotPage from './pages/Bot'
+import JournalPage from './pages/Journal'
 import Dashboard from './pages/Dashboard'
 import LoginPage from './pages/Login'
 import LogsPage from './pages/Logs'
-import LotsPage from './pages/Lots'
-import SandboxPage from './pages/Sandbox'
 import SettingsPage from './pages/Settings'
 import SteamPage from './pages/Steam'
 
 const NAV = [
   ['/', 'Продажи'],
-  ['/bot', 'Бот'],
-  ['/lots', 'Лоты'],
-  ['/sandbox', 'Песочница'],
+  ['/journal', 'Заказы'],
   ['/steam', 'Друзья Steam'],
   ['/logs', 'Логи'],
   ['/settings', 'Настройки'],
@@ -24,7 +20,6 @@ const NAV = [
 export default function App() {
   const [user, setUser] = useState<string | null>(null)
   const [checked, setChecked] = useState(false)
-
   useEffect(() => {
     setUnauthorizedHandler(() => setUser(null))
     if (!getToken()) {
@@ -73,9 +68,7 @@ export default function App() {
       <main className="main">
         <Routes>
           <Route path="/" element={<Dashboard />} />
-          <Route path="/bot" element={<BotPage />} />
-          <Route path="/lots" element={<LotsPage />} />
-          <Route path="/sandbox" element={<SandboxPage />} />
+          <Route path="/journal" element={<JournalPage />} />
           <Route path="/steam" element={<SteamPage />} />
           <Route path="/logs" element={<LogsPage />} />
           <Route path="/settings" element={<SettingsPage />} />

@@ -4,7 +4,7 @@ from app.integrations.funpay.orders import order_from_export
 from app.integrations.steam.base import friend_limit
 from app.integrations.steam.links import parse_steam_link
 from app.integrations.steam.web import parse_pending_page
-from app.models.domain import FriendTier, Relationship, SteamFriend
+from app.models.domain import Relationship, SteamFriend
 from app.repositories.base import BaseOrderRepository
 from app.usecases.friends import FriendsService
 from app.usecases.friends_ranking import BuyerInfo, rank_friends
@@ -16,11 +16,10 @@ def sid(n: int) -> str:
     return str(76561198000000000 + n)
 
 
-def friend(n, days_ago=100, level=None, rel=Relationship.FRIEND):
+def friend(n, days_ago=100, rel=Relationship.FRIEND):
     return SteamFriend(
         steam_id=sid(n),
         relationship=rel,
-        level=level,
         friend_since=NOW - timedelta(days=days_ago),
     )
 
@@ -52,62 +51,6 @@ def test_friend_limit():
     assert friend_limit(1000) == 2000
 
 
-def test_ranking_order_and_candidates():
-    friends = [
-        friend(1),  # защищён
-        friend(2),  # открытый заказ
-        friend(3, days_ago=200),  # давний покупатель
-        friend(4, days_ago=5),  # свежий покупатель
-        friend(5, level=50),  # друг, высокий уровень
-        friend(6, level=1),  # друг, низкий уровень
-        friend(7, days_ago=1, rel=Relationship.INVITE_SENT),
-        friend(8, days_ago=30, rel=Relationship.INVITE_SENT),
-        friend(9, rel=Relationship.INVITE_RECEIVED),
-    ]
-    buyers = {
-        sid(2): BuyerInfo('b2', 1, NOW, has_open_order=True),
-        sid(3): BuyerInfo('b3', 2, NOW - timedelta(days=60), False),
-        sid(4): BuyerInfo('b4', 1, NOW - timedelta(days=3), False),
-    }
-    # Лимит при уровне 0 — 250; занято 8, держим 245 свободными -> 3 лишних.
-    report = rank_friends(
-        friends,
-        {sid(1)},
-        buyers,
-        NOW,
-        30,
-        own_level=0,
-        keep_free=245,
-    )
-    tiers = [r.tier for r in report.ranked]
-    assert tiers[:6] == [
-        FriendTier.PROTECTED,
-        FriendTier.OPEN_ORDER,
-        FriendTier.LONG_BUYER,
-        FriendTier.BUYER,
-        FriendTier.FRIEND,
-        FriendTier.FRIEND,
-    ]
-    assert report.ranked[4].friend.level == 50
-    assert report.used == 8  # входящая заявка слот не занимает
-    assert report.to_free == 3
-    # Первыми уходят старая исходящая заявка, новая заявка, слабый друг.
-    assert [c.friend.steam_id for c in report.candidates] == [
-        sid(8),
-        sid(7),
-        sid(6),
-    ]
-    assert not any(not c.removable for c in report.candidates)
-
-
-def test_never_removes_protected_even_when_full():
-    friends = [friend(1), friend(2)]
-    buyers = {sid(2): BuyerInfo('b', 1, NOW, has_open_order=True)}
-    report = rank_friends(friends, {sid(1)}, buyers, NOW, 30, 0, 250)
-    assert report.to_free == 2
-    assert report.candidates == []
-
-
 def test_parse_pending_page():
     html = """
     <div id="search_results_sentinvites">
@@ -123,7 +66,7 @@ def test_parse_pending_page():
     assert items['76561198000000002'].relationship == 'invite_received'
 
 
-async def test_refresh_caches_levels_and_remove_guards(
+async def test_refresh_loads_only_own_level(
     container,
     integrations,
     settings_service,
@@ -140,7 +83,7 @@ async def test_refresh_caches_levels_and_remove_guards(
     gateway = integrations.steam_gateway
     gateway.friend_list = [
         friend(1),
-        friend(5, level=None),
+        friend(5),
         SteamFriend(
             open_order.steam_id, Relationship.FRIEND, friend_since=NOW
         ),
@@ -152,17 +95,13 @@ async def test_refresh_caches_levels_and_remove_guards(
     assert report.own_level == 20
     assert report.limit == 350
     calls = gateway.level_calls
+    assert calls == 1
     await service.refresh()
     assert gateway.level_calls == calls  # уровни из кэша
 
-    result = await service.remove([sid(1), open_order.steam_id, sid(5)])
-    assert 'защищённом' in result[0]['error']
-    assert 'открытый заказ' in result[1]['error']
-    assert result[2] == {'steam_id': sid(5), 'removed': True}
-    assert gateway.removed == [sid(5)]
 
-
-def test_steam_api(auth_client, integrations):
+def test_steam_api(auth_client, caplog):
+    caplog.set_level('INFO', logger='steam.friends')
     resp = auth_client.post(
         '/api/steam/protected',
         json={'steam_id': sid(1), 'note': 'друг детства'},
@@ -172,5 +111,50 @@ def test_steam_api(auth_client, integrations):
     assert settings['friends']['protected'] == [
         {'steam_id': sid(1), 'note': 'друг детства'},
     ]
+    assert f'защита {sid(1)} включена' in caplog.text
     report = auth_client.get('/api/steam/friends').json()
     assert report['ranked'] == []
+    removed = auth_client.post(
+        '/api/steam/friends/remove',
+        json={'steam_ids': [sid(2)]},
+    )
+    assert removed.status_code == 404
+    assert (
+        auth_client.delete(f'/api/steam/protected/{sid(1)}').status_code == 200
+    )
+    assert f'защита {sid(1)} снята' in caplog.text
+
+
+def test_rank_prefers_recent_purchases_then_recent_friendships():
+    friends = [
+        friend(1, days_ago=300),
+        friend(2, days_ago=400),
+        friend(3, days_ago=2),
+        friend(4, days_ago=3),
+        friend(5, days_ago=1, rel=Relationship.INVITE_SENT),
+        friend(6, rel=Relationship.INVITE_RECEIVED),
+        friend(7),
+        friend(8),
+        friend(9, days_ago=1),
+    ]
+    buyers = {
+        sid(1): BuyerInfo('recent', 1, NOW, False),
+        sid(2): BuyerInfo('past', 1, NOW - timedelta(days=60), False),
+        sid(7): BuyerInfo('open', 1, NOW, True),
+        sid(9): BuyerInfo(
+            'old purchase, new friend', 1, NOW - timedelta(days=60), False
+        ),
+    }
+    report = rank_friends(friends, {sid(5), sid(8)}, buyers, own_level=0)
+    assert [r.friend.steam_id for r in report.ranked] == [
+        sid(8),
+        sid(7),
+        sid(1),
+        sid(9),
+        sid(2),
+        sid(3),
+        sid(4),
+        sid(5),
+        sid(6),
+    ]
+    assert report.used == 8

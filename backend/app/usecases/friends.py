@@ -2,23 +2,22 @@ import logging
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta, timezone
 
-from app.core import messages
+from app.core.timing import logged_call
 from app.integrations.provider import BaseIntegrations
 from app.integrations.steam.base import SteamError
 from app.models.app_settings import ProtectedFriend
-from app.models.domain import Channel, FriendsReport, Relationship
+from app.models.domain import FriendsReport, Order
 from app.repositories.base import (
     BaseOrderRepository,
     BaseSteamLinkRepository,
     BaseSteamRepository,
 )
-from app.usecases.errors import ConflictError, ExternalServiceError
+from app.usecases.errors import ExternalServiceError
 from app.usecases.friends_ranking import BuyerInfo, rank_friends
 from app.usecases.settings import SettingsService
 
 log = logging.getLogger('steam.friends')
 LEVEL_CACHE_DAYS = 7
-LEVEL_LOOKUPS_PER_REFRESH = 300
 UNKNOWN_LEVEL = -1
 
 
@@ -31,7 +30,11 @@ class FriendsService:
     integrations: BaseIntegrations
 
     async def refresh(self) -> FriendsReport:
-        """Забирает друзей из Steam, дополняет именами и уровнями."""
+        """Забирает друзей, заявки и уровень владельца для расчёта слотов."""
+        async with logged_call(log, 'Steam: обновление списка друзей'):
+            return await self._refresh()
+
+    async def _refresh(self) -> FriendsReport:
         settings = await self.settings.get()
         gateway = self.integrations.steam(settings)
         now = datetime.now(timezone.utc)
@@ -39,21 +42,22 @@ class FriendsService:
             friends = await gateway.friends()
             ids = [f.steam_id for f in friends]
             names = await gateway.summaries(ids)
+            own_id = settings.steam.steam_id
             levels = await self.steam_repo.cached_levels(
-                ids + [settings.steam.steam_id],
+                [own_id],
                 now - timedelta(days=LEVEL_CACHE_DAYS),
             )
-            missing = [
-                i for i in [settings.steam.steam_id, *ids] if i not in levels
-            ][:LEVEL_LOOKUPS_PER_REFRESH]
-            fresh = await gateway.levels(missing)
+            fresh = (
+                await gateway.levels([own_id]) if own_id not in levels else {}
+            )
         except SteamError as e:
             log.warning('Steam: обновление друзей не удалось: %s', e)
             raise ExternalServiceError(str(e)) from e
         # Скрытый уровень тоже кэшируем (как -1), чтобы не спрашивать
         # Steam о нём при каждом обновлении.
-        fresh.update({i: UNKNOWN_LEVEL for i in missing if i not in fresh})
-        await self.steam_repo.cache_levels(fresh, now)
+        if own_id not in levels:
+            fresh.setdefault(own_id, UNKNOWN_LEVEL)
+            await self.steam_repo.cache_levels(fresh, now)
         levels.update(fresh)
         levels = {k: v for k, v in levels.items() if v != UNKNOWN_LEVEL}
         enriched = [
@@ -62,7 +66,6 @@ class FriendsService:
                 name=f.name
                 or (names[f.steam_id].name if f.steam_id in names else ''),
                 avatar=names[f.steam_id].avatar if f.steam_id in names else '',
-                level=levels.get(f.steam_id),
             )
             for f in friends
         ]
@@ -100,32 +103,38 @@ class FriendsService:
             friends,
             protected,
             await self._buyers(),
-            datetime.now(timezone.utc),
-            settings.friends.long_friend_days,
             own_level,
-            settings.friends.keep_free_slots,
             refreshed_at,
         )
 
     async def _buyers(self) -> dict[str, BuyerInfo]:
-        """Steam id -> покупатель: из выгрузки и из ссылок в чатах."""
+        """Steam id -> покупатель: из выгрузки и ранее сохранённых привязок."""
         acc: dict[str, dict] = {}
-        for order in await self.orders.list_all():
+        orders = {o.order_uid: o for o in await self.orders.list_all()}
+        known = set()
+        for order in orders.values():
             if order.steam_id:
+                known.add((order.order_uid, order.steam_id))
                 self._add(
                     acc,
                     order.steam_id,
                     order.buyer_name,
-                    order.paid_at,
+                    _purchase_at(order),
                     order.status == 'paid',
                 )
-        for link in await self.links.list(Channel.FUNPAY):
-            if link.steam_id:
-                order = await self.orders.get(link.order_id)
-                is_open = order is None or order.status == 'paid'
-                self._add(
-                    acc, link.steam_id, link.buyer_name, link.saved_at, is_open
-                )
+        for link in await self.links.list('funpay'):
+            pair = (link.order_id, link.steam_id)
+            if not link.steam_id or pair in known:
+                continue
+            known.add(pair)
+            order = orders.get(link.order_id)
+            self._add(
+                acc,
+                link.steam_id,
+                link.buyer_name,
+                _purchase_at(order) if order else None,
+                order is not None and order.status == 'paid',
+            )
         return {
             sid: BuyerInfo(
                 name=v['name'],
@@ -154,50 +163,6 @@ class FriendsService:
             item['last'] = at
             item['name'] = name or item['name']
 
-    async def remove(self, steam_ids: list[str]) -> list[dict]:
-        """Удаляет выбранных. Защищённых и с открытым заказом — никогда."""
-        settings = await self.settings.get()
-        if not settings.friends.allow_removal:
-            log.warning(
-                'Удаление друзей отключено в настройках, отклонено: %d',
-                len(steam_ids),
-            )
-            return [
-                {'steam_id': sid, 'error': messages.STEAM_REMOVAL_DISABLED}
-                for sid in steam_ids
-            ]
-        report = await self.report()
-        by_id = {r.friend.steam_id: r for r in report.ranked}
-        gateway = self.integrations.steam(settings)
-        results = []
-        for sid in steam_ids:
-            item = by_id.get(sid)
-            if item is None:
-                results.append(
-                    {
-                        'steam_id': sid,
-                        'error': messages.STEAM_NOT_FRIEND.format(sid),
-                    },
-                )
-                continue
-            if not item.removable:
-                text = (
-                    messages.STEAM_PROTECTED
-                    if item.tier == 'protected'
-                    else messages.STEAM_ACTIVE_ORDER
-                )
-                results.append({'steam_id': sid, 'error': text.format(sid)})
-                continue
-            try:
-                await gateway.remove_friend(sid)
-            except SteamError as e:
-                results.append({'steam_id': sid, 'error': str(e)})
-                continue
-            await self.steam_repo.remove_from_snapshot(sid)
-            log.info('Steam: удалён %s (%s)', sid, item.reason)
-            results.append({'steam_id': sid, 'removed': True})
-        return results
-
     async def protect(self, steam_id: str, note: str) -> None:
         settings = await self.settings.get()
         items = [
@@ -206,6 +171,9 @@ class FriendsService:
         items.append(ProtectedFriend(steam_id=steam_id, note=note))
         settings.friends.protected = items
         await self.settings.save(settings)
+        log.info(
+            'Steam: защита %s включена', steam_id, extra={'steam_id': steam_id}
+        )
 
     async def unprotect(self, steam_id: str) -> None:
         settings = await self.settings.get()
@@ -213,23 +181,10 @@ class FriendsService:
             p for p in settings.friends.protected if p.steam_id != steam_id
         ]
         await self.settings.save(settings)
+        log.info(
+            'Steam: защита %s снята', steam_id, extra={'steam_id': steam_id}
+        )
 
-    async def auto_cleanup(self) -> list[dict]:
-        """Автоочистка: только заявки и «просто друзья», если включена."""
-        settings = await self.settings.get()
-        if not (
-            settings.friends.auto_cleanup and settings.friends.allow_removal
-        ):
-            return []
-        report = await self.refresh()
-        ids = [
-            c.friend.steam_id
-            for c in report.candidates
-            if c.friend.relationship == Relationship.INVITE_SENT
-            or c.tier == 'friend'
-        ]
-        if not ids:
-            return []
-        if len(ids) > 50:
-            raise ConflictError('слишком много кандидатов, удалите вручную')
-        return await self.remove(ids)
+
+def _purchase_at(order: Order) -> datetime | None:
+    return order.paid_at if order.status != 'refunded' else None

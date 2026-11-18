@@ -3,37 +3,28 @@ from dataclasses import asdict, dataclass, fields
 from datetime import datetime
 from typing import Any, TypeVar
 
-from pymongo import DESCENDING, ReturnDocument, UpdateOne
+from pymongo import DESCENDING, UpdateOne
 from pymongo.asynchronous.database import AsyncDatabase
 
 from app.db import mongo as names
 from app.models.domain import (
-    BotTrace,
-    Channel,
-    ChatMessage,
-    Conversation,
     LogEntry,
-    LotRecord,
-    Offer,
-    OpenOrder,
     Order,
+    SalePreview,
+    SalesSnapshot,
     SteamFriend,
     SteamLinkRecord,
     SyncRun,
-    ToolCallTrace,
     User,
 )
 from app.repositories.base import (
-    BaseChatRepository,
     BaseLogRepository,
-    BaseLotRepository,
     BaseOrderRepository,
-    BaseSandboxRepository,
+    BaseSalesSnapshotRepository,
     BaseSettingsRepository,
     BaseSteamLinkRepository,
     BaseSteamRepository,
     BaseSyncRunRepository,
-    BaseUsageRepository,
     BaseUserRepository,
 )
 
@@ -222,120 +213,6 @@ def _escape(text: str) -> str:
     return re.escape(text)
 
 
-def _chat_filter(channel: Channel, chat_id: str) -> dict[str, str]:
-    return {'channel': str(channel), 'chat_id': chat_id}
-
-
-def _trace(doc: dict[str, Any]) -> BotTrace:
-    trace = _build(BotTrace, doc)
-    trace.tool_calls = [ToolCallTrace(**c) for c in doc.get('tool_calls', [])]
-    return trace
-
-
-@dataclass(frozen=True)
-class MongoChatRepository(BaseChatRepository):
-    db: AsyncDatabase
-
-    async def add_message(self, message: ChatMessage) -> None:
-        doc = asdict(message)
-        await self.db[names.MESSAGES].update_one(
-            {
-                **_chat_filter(message.channel, message.chat_id),
-                'message_id': message.message_id,
-            },
-            {'$setOnInsert': doc},
-            upsert=True,
-        )
-
-    async def messages(
-        self,
-        channel: Channel,
-        chat_id: str,
-        limit: int,
-    ) -> list[ChatMessage]:
-        cursor = (
-            self.db[names.MESSAGES]
-            .find(_chat_filter(channel, chat_id))
-            .sort('message_id', DESCENDING)
-            .limit(limit)
-        )
-        items = [_build(ChatMessage, d) async for d in cursor]
-        return list(reversed(items))
-
-    async def get_conversation(
-        self,
-        channel: Channel,
-        chat_id: str,
-    ) -> Conversation | None:
-        doc = await self.db[names.CONVERSATIONS].find_one(
-            _chat_filter(channel, chat_id),
-        )
-        return _build(Conversation, doc) if doc else None
-
-    async def save_conversation(self, conversation: Conversation) -> None:
-        await self.db[names.CONVERSATIONS].replace_one(
-            _chat_filter(conversation.channel, conversation.chat_id),
-            asdict(conversation),
-            upsert=True,
-        )
-
-    async def conversations(
-        self,
-        channel: Channel,
-        limit: int,
-    ) -> list[Conversation]:
-        cursor = (
-            self.db[names.CONVERSATIONS]
-            .find({'channel': str(channel)})
-            .sort('last_message_at', DESCENDING)
-            .limit(limit)
-        )
-        return [_build(Conversation, d) async for d in cursor]
-
-    async def add_trace(self, trace: BotTrace) -> None:
-        await self.db[names.TRACES].insert_one(asdict(trace))
-
-    async def traces(
-        self,
-        channel: Channel,
-        chat_id: str | None,
-        limit: int,
-    ) -> list[BotTrace]:
-        flt: dict[str, Any] = {'channel': str(channel)}
-        if chat_id is not None:
-            flt['chat_id'] = chat_id
-        cursor = (
-            self.db[names.TRACES]
-            .find(flt)
-            .sort('created_at', DESCENDING)
-            .limit(limit)
-        )
-        return [_trace(d) async for d in cursor]
-
-    async def clear(self, channel: Channel, chat_id: str) -> None:
-        flt = _chat_filter(channel, chat_id)
-        for name in (names.MESSAGES, names.CONVERSATIONS, names.TRACES):
-            await self.db[name].delete_many(flt)
-
-
-@dataclass(frozen=True)
-class MongoUsageRepository(BaseUsageRepository):
-    db: AsyncDatabase
-
-    async def add_tokens(self, day: str, tokens: int) -> int:
-        doc = await self.db[names.USAGE].find_one_and_update(
-            {'day': day},
-            {'$inc': {'tokens': tokens}},
-            upsert=True,
-            return_document=ReturnDocument.AFTER,
-        )
-        return int(doc['tokens'])
-
-    async def tokens(self, day: str) -> int:
-        doc = await self.db[names.USAGE].find_one({'day': day})
-        return int(doc['tokens']) if doc else 0
-
-
 @dataclass(frozen=True)
 class MongoSteamRepository(BaseSteamRepository):
     db: AsyncDatabase
@@ -368,12 +245,6 @@ class MongoSteamRepository(BaseSteamRepository):
         friends = [_build(SteamFriend, f) for f in doc.get('friends', [])]
         return friends, doc.get('own_level'), doc.get('refreshed_at')
 
-    async def remove_from_snapshot(self, steam_id: str) -> None:
-        await self.db[names.STEAM_SNAPSHOT].update_one(
-            {'_id': 'snapshot'},
-            {'$pull': {'friends': {'steam_id': steam_id}}},
-        )
-
     async def cached_levels(
         self,
         steam_ids: list[str],
@@ -402,116 +273,30 @@ class MongoSteamRepository(BaseSteamRepository):
 
 
 @dataclass(frozen=True)
-class MongoSandboxRepository(BaseSandboxRepository):
-    db: AsyncDatabase
-
-    async def offers(self) -> list[Offer]:
-        cursor = self.db[names.SANDBOX_OFFERS].find().sort('offer_id')
-        return [_build(Offer, d) async for d in cursor]
-
-    async def save_offer(self, offer: Offer) -> None:
-        await self.db[names.SANDBOX_OFFERS].replace_one(
-            {'offer_id': offer.offer_id},
-            asdict(offer),
-            upsert=True,
-        )
-
-    async def delete_offer(self, offer_id: str) -> None:
-        await self.db[names.SANDBOX_OFFERS].delete_one(
-            {'offer_id': offer_id},
-        )
-
-    async def orders(self, buyer_id: int | None) -> list[OpenOrder]:
-        flt = {} if buyer_id is None else {'buyer_id': buyer_id}
-        cursor = self.db[names.SANDBOX_ORDERS].find(flt).sort('order_id')
-        return [_build(OpenOrder, d) async for d in cursor]
-
-    async def save_order(self, order: OpenOrder) -> None:
-        await self.db[names.SANDBOX_ORDERS].replace_one(
-            {'order_id': order.order_id},
-            asdict(order),
-            upsert=True,
-        )
-
-    async def next_id(self, kind: str) -> int:
-        doc = await self.db[names.COUNTERS].find_one_and_update(
-            {'_id': kind},
-            {'$inc': {'value': 1}},
-            upsert=True,
-            return_document=ReturnDocument.AFTER,
-        )
-        return int(doc['value'])
-
-    async def friendship(
-        self,
-        buyer_id: int,
-    ) -> tuple[str | None, datetime | None] | None:
-        doc = await self.db[names.SANDBOX_FRIENDS].find_one(
-            {'buyer_id': buyer_id},
-        )
-        return (doc['relationship'], doc['since']) if doc else None
-
-    async def set_friendship(
-        self,
-        buyer_id: int,
-        relationship: str | None,
-        since: datetime | None,
-    ) -> None:
-        await self.db[names.SANDBOX_FRIENDS].replace_one(
-            {'buyer_id': buyer_id},
-            {
-                'buyer_id': buyer_id,
-                'relationship': relationship,
-                'since': since,
-            },
-            upsert=True,
-        )
-
-
-@dataclass(frozen=True)
 class MongoSteamLinkRepository(BaseSteamLinkRepository):
     db: AsyncDatabase
 
-    async def save(self, record: SteamLinkRecord) -> None:
-        await self.db[names.STEAM_LINKS].replace_one(
-            {'channel': str(record.channel), 'order_id': record.order_id},
-            asdict(record),
-            upsert=True,
-        )
-
-    async def list(self, channel: Channel) -> list[SteamLinkRecord]:
+    async def list(self, channel: str) -> list[SteamLinkRecord]:
         cursor = self.db[names.STEAM_LINKS].find({'channel': str(channel)})
         return [_build(SteamLinkRecord, d) async for d in cursor]
 
 
 @dataclass(frozen=True)
-class MongoLotRepository(BaseLotRepository):
+class MongoSalesSnapshotRepository(BaseSalesSnapshotRepository):
     db: AsyncDatabase
 
-    async def list(self, channel: Channel) -> list[LotRecord]:
-        cursor = (
-            self.db[names.LOTS]
-            .find({'channel': str(channel)})
-            .sort(
-                'title',
-            )
+    async def load(self) -> SalesSnapshot | None:
+        doc = await self.db[names.SALES_SNAPSHOT].find_one({'_id': 'latest'})
+        if doc is None:
+            return None
+        return SalesSnapshot(
+            refreshed_at=doc['refreshed_at'],
+            items=[_build(SalePreview, item) for item in doc['items']],
         )
-        return [_build(LotRecord, d) async for d in cursor]
 
-    async def get(self, channel: Channel, lot_id: str) -> LotRecord | None:
-        doc = await self.db[names.LOTS].find_one(
-            {'channel': str(channel), 'lot_id': lot_id},
-        )
-        return _build(LotRecord, doc) if doc else None
-
-    async def save(self, lot: LotRecord) -> None:
-        await self.db[names.LOTS].replace_one(
-            {'channel': str(lot.channel), 'lot_id': lot.lot_id},
-            asdict(lot),
+    async def save(self, snapshot: SalesSnapshot) -> None:
+        await self.db[names.SALES_SNAPSHOT].replace_one(
+            {'_id': 'latest'},
+            asdict(snapshot),
             upsert=True,
-        )
-
-    async def delete(self, channel: Channel, lot_id: str) -> None:
-        await self.db[names.LOTS].delete_one(
-            {'channel': str(channel), 'lot_id': lot_id},
         )
